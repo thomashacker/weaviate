@@ -15,8 +15,8 @@ import (
 
 // repairer tries to detect inconsistencies and repair objects when reading them from replicas
 type repairer struct {
-	client finderClient // needed to commit and abort operation
 	class  string
+	client finderClient // needed to commit and abort operation
 }
 
 // repairOne repairs a single object (use in combination with Finder::GetOne)
