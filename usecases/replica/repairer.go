@@ -79,6 +79,14 @@ func (r *repairer) repairOne(ctx context.Context,
 	return updates.Object, gr.Wait()
 }
 
+// iTuple tuple of indices used to identify a unique object
+type iTuple struct {
+	S       int   // sender's index
+	O       int   // object's index
+	T       int64 // last update time
+	Deleted bool
+}
+
 // repairExist repairs a single object when checking for existence
 func (r *repairer) repairExist(ctx context.Context,
 	shard string,
