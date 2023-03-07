@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/go-openapi/strfmt"
@@ -24,7 +23,6 @@ import (
 	"github.com/weaviate/weaviate/entities/search"
 	"github.com/weaviate/weaviate/entities/storobj"
 	"github.com/weaviate/weaviate/usecases/objects"
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -66,8 +64,7 @@ type Finder struct {
 	client   finderClient // needed to commit and abort operation
 	resolver *resolver    // host names of replicas
 	class    string
-	// TODO LOGGER
-	// Don't leak host nodes to end user but log it
+	repairer
 	log logrus.FieldLogger
 }
 
@@ -76,15 +73,17 @@ func NewFinder(className string,
 	stateGetter shardingState, nodeResolver nodeResolver,
 	client RClient, l logrus.FieldLogger,
 ) *Finder {
+	cl := finderClient{client}
 	return &Finder{
-		client: finderClient{client},
+		client: cl,
 		resolver: &resolver{
 			schema:       stateGetter,
 			nodeResolver: nodeResolver,
 			class:        className,
 		},
-		class: className,
-		log:   l,
+		class:    className,
+		repairer: repairer{client: cl, class: className},
+		log:      l,
 	}
 }
 
@@ -258,61 +257,6 @@ func (f *Finder) readOne(ctx context.Context,
 	return resultCh
 }
 
-// repair one object on several nodes using last write wins strategy
-func (f *Finder) repairOne(ctx context.Context, shard string, id strfmt.UUID, votes []objTuple, st rState, contentIdx int) (_ *storobj.Object, err error) {
-	var (
-		lastUTime int64
-		winnerIdx int
-		cl        = f.client
-	)
-	for i, x := range votes {
-		if x.o.Deleted {
-			return nil, errConflictExistOrDeleted
-		}
-		if x.UTime > lastUTime {
-			lastUTime = x.UTime
-			winnerIdx = i
-		}
-	}
-	// fetch most recent object
-	updates := votes[contentIdx].o
-	winner := votes[winnerIdx]
-	if updates.UpdateTime() != lastUTime {
-		updates, err = cl.FullRead(ctx, winner.sender, f.class, shard, id,
-			search.SelectProperties{}, additional.Properties{})
-		if err != nil {
-			return nil, fmt.Errorf("get most recent object from %s: %w", winner.sender, err)
-		}
-		if updates.UpdateTime() != lastUTime {
-			return nil, fmt.Errorf("fetch new state from %s: %w, %v", winner.sender, errConflictObjectChanged, err)
-		}
-	}
-
-	var gr errgroup.Group
-	for _, vote := range votes { // repair
-		if vote.UTime == lastUTime {
-			continue
-		}
-		vote := vote
-		gr.Go(func() error {
-			ups := []*objects.VObject{{
-				LatestObject:    &updates.Object.Object,
-				StaleUpdateTime: vote.UTime,
-			}}
-			resp, err := cl.Overwrite(ctx, vote.sender, f.class, shard, ups)
-			if err != nil {
-				return fmt.Errorf("node %q could not repair object: %w", vote.sender, err)
-			}
-			if len(resp) > 0 && resp[0].Err != "" {
-				return fmt.Errorf("overwrite %w %s: %s", errConflictObjectChanged, vote.sender, resp[0].Err)
-			}
-			return nil
-		})
-	}
-
-	return updates.Object, gr.Wait()
-}
-
 type vote struct {
 	batchReply
 	Count []int
@@ -388,124 +332,6 @@ func (f *Finder) readAll(ctx context.Context, shard string, ids []strfmt.UUID, c
 	return resultCh
 }
 
-func (f *Finder) repairAll(ctx context.Context,
-	shard string,
-	ids []strfmt.UUID,
-	votes []vote,
-	st rState,
-	contentIdx int,
-) ([]*storobj.Object, error) {
-	var (
-		result     = make([]*storobj.Object, len(ids)) // final result
-		lastTimes  = make([]iTuple, len(ids))          // most recent times
-		ms         = make([]iTuple, 0, len(ids))       // mismatches
-		nDeletions = 0
-		cl         = f.client
-	)
-	// find most recent objects
-	for i, x := range votes[contentIdx].FullData {
-		lastTimes[i] = iTuple{S: contentIdx, O: i, T: x.UpdateTime(), Deleted: x.Deleted}
-	}
-	for i, vote := range votes {
-		if i != contentIdx {
-			for j, x := range vote.DigestData {
-				deleted := lastTimes[j].Deleted || x.Deleted
-				if x.UpdateTime > lastTimes[j].T {
-					lastTimes[j] = iTuple{S: i, O: j, T: x.UpdateTime}
-				}
-				lastTimes[j].Deleted = deleted
-			}
-		}
-	}
-	// find missing content (diff)
-	for i, p := range votes[contentIdx].FullData {
-		if lastTimes[i].Deleted { // conflict
-			nDeletions++
-			result[i] = nil
-		} else if contentIdx != lastTimes[i].S {
-			ms = append(ms, lastTimes[i])
-		} else {
-			result[i] = p.Object
-		}
-	}
-	if len(ms) > 0 { // fetch most recent objects
-		// partition by hostname
-		sort.SliceStable(ms, func(i, j int) bool { return ms[i].S < ms[j].S })
-		partitions := make([]int, 0, len(votes)-2)
-		pre := ms[0].S
-		for i, y := range ms {
-			if y.S != pre {
-				partitions = append(partitions, i)
-				pre = y.S
-			}
-		}
-		partitions = append(partitions, len(ms))
-
-		// concurrent fetches
-		gr, ctx := errgroup.WithContext(ctx)
-		start := 0
-		for _, end := range partitions { // fetch diffs
-			receiver := votes[ms[start].S].Sender
-			query := make([]strfmt.UUID, end-start)
-			for j := 0; start < end; start++ {
-				query[j] = ids[ms[start].O]
-				j++
-			}
-			start := start
-			gr.Go(func() error {
-				resp, err := cl.FullReads(ctx, receiver, f.class, shard, query)
-				if err != nil {
-					return err
-				}
-				for i, n := 0, len(query); i < n; i++ {
-					idx := ms[start-n+i].O
-					if lastTimes[idx].T != resp[i].UpdateTime() {
-						return fmt.Errorf("object %s changed on %s", ids[idx], receiver)
-					}
-					result[idx] = resp[i].Object
-				}
-				return nil
-			})
-			if err := gr.Wait(); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	// concurrent repairs
-	gr, ctx := errgroup.WithContext(ctx)
-	for _, vote := range votes {
-		query := make([]*objects.VObject, 0, len(ids)/2)
-		for j, x := range lastTimes {
-			if cTime := vote.UpdateTimeAt(j); x.T != cTime && !x.Deleted {
-				query = append(query, &objects.VObject{LatestObject: &result[j].Object, StaleUpdateTime: cTime})
-			}
-		}
-		if len(query) == 0 {
-			continue
-		}
-		receiver := vote.Sender
-		gr.Go(func() error {
-			rs, err := cl.Overwrite(ctx, receiver, f.class, shard, query)
-			if err != nil {
-				return fmt.Errorf("node %q could not repair objects: %w", receiver, err)
-			}
-			for _, r := range rs {
-				if r.Err != "" {
-					return fmt.Errorf("object changed in the meantime on node %s: %s", receiver, r.Err)
-				}
-			}
-			return nil
-		})
-	}
-	err := gr.Wait()
-	if nDeletions > 0 {
-		return result, errConflictExistOrDeleted
-	}
-
-	return result, err
-}
-
 // iTuple tuple of indices used to identify a unique object
 type iTuple struct {
 	S       int   // sender's index
@@ -573,52 +399,4 @@ func (f *Finder) readExistence(ctx context.Context,
 			WithField("msg", sb.String()).Error(err)
 	}()
 	return resultCh
-}
-
-func (f *Finder) repairExist(ctx context.Context, shard string, id strfmt.UUID, votes []boolTuple, st rState) (_ bool, err error) {
-	var (
-		lastUTime int64
-		winnerIdx int
-		cl        = f.client
-	)
-	for i, x := range votes {
-		if x.o.Deleted {
-			return false, errConflictExistOrDeleted
-		}
-		if x.UTime > lastUTime {
-			lastUTime = x.UTime
-			winnerIdx = i
-		}
-	}
-	// fetch most recent object
-	winner := votes[winnerIdx]
-	resp, err := cl.FullRead(ctx, winner.sender, f.class, shard, id, search.SelectProperties{}, additional.Properties{})
-	if err != nil {
-		return false, fmt.Errorf("get most recent object from %s: %w", winner.sender, err)
-	}
-	if resp.UpdateTime() != lastUTime {
-		return false, fmt.Errorf("fetch new state from %s: %w, %v", winner.sender, errConflictObjectChanged, err)
-	}
-	gr, ctx := errgroup.WithContext(ctx)
-	for _, vote := range votes { // repair
-		if vote.UTime == lastUTime {
-			continue
-		}
-		vote := vote
-		gr.Go(func() error {
-			ups := []*objects.VObject{{
-				LatestObject:    &resp.Object.Object,
-				StaleUpdateTime: vote.UTime,
-			}}
-			resp, err := cl.Overwrite(ctx, vote.sender, f.class, shard, ups)
-			if err != nil {
-				return fmt.Errorf("node %q could not repair object: %w", vote.sender, err)
-			}
-			if len(resp) > 0 && resp[0].Err != "" {
-				return fmt.Errorf("overwrite %w %s: %s", errConflictObjectChanged, vote.sender, resp[0].Err)
-			}
-			return nil
-		})
-	}
-	return !resp.Deleted, gr.Wait()
 }
