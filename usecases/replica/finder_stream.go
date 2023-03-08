@@ -29,11 +29,6 @@ type finderStream struct {
 }
 
 type (
-	// result represents a valid result or an error
-	result[T any] struct {
-		data T
-		err  error
-	}
 
 	// tuple is a container for the data received from a replica
 	tuple[T any] struct {
@@ -45,14 +40,14 @@ type (
 	}
 
 	objTuple  tuple[objects.Replica]
-	objResult = result[*storobj.Object]
+	objResult = _Result[*storobj.Object]
 )
 
 // readOne reads one replicated object
 func (f *finderStream) readOne(ctx context.Context,
 	shard string,
 	id strfmt.UUID,
-	ch <-chan simpleResult[findOneReply],
+	ch <-chan _Result[findOneReply],
 	st rState,
 ) <-chan objResult {
 	// counters tracks the number of votes for each participant
@@ -66,7 +61,7 @@ func (f *finderStream) readOne(ctx context.Context,
 		)
 
 		for r := range ch { // len(ch) == st.Level
-			resp := r.Response
+			resp := r.Value
 			if r.Err != nil { // a least one node is not responding
 				f.log.WithField("op", "get").WithField("replica", resp.sender).
 					WithField("class", f.class).WithField("shard", shard).WithField("uuid", id).Error(r.Err)
@@ -113,7 +108,7 @@ func (f *finderStream) readOne(ctx context.Context,
 }
 
 type (
-	batchResult result[[]*storobj.Object]
+	batchResult _Result[[]*storobj.Object]
 
 	// vote represents objects received from a specific replica and the number of votes per object.
 	vote struct {
@@ -124,7 +119,7 @@ type (
 )
 
 // readAll read in all replicated objects specified by their ids
-func (f *finderStream) readAll(ctx context.Context, shard string, ids []strfmt.UUID, ch <-chan simpleResult[batchReply], st rState) <-chan batchResult {
+func (f *finderStream) readAll(ctx context.Context, shard string, ids []strfmt.UUID, ch <-chan _Result[batchReply], st rState) <-chan batchResult {
 	resultCh := make(chan batchResult, 1)
 
 	go func() {
@@ -137,9 +132,9 @@ func (f *finderStream) readAll(ctx context.Context, shard string, ids []strfmt.U
 		)
 
 		for r := range ch { // len(ch) == st.Level
-			resp := r.Response
+			resp := r.Value
 			if r.Err != nil { // a least one node is not responding
-				f.log.WithField("op", "get").WithField("replica", r.Response.Sender).
+				f.log.WithField("op", "get").WithField("replica", r.Value.Sender).
 					WithField("class", f.class).WithField("shard", shard).Error(r.Err)
 				resultCh <- batchResult{nil, errRead}
 				return
@@ -190,10 +185,10 @@ type boolTuple tuple[RepairResponse]
 func (f *finderStream) readExistence(ctx context.Context,
 	shard string,
 	id strfmt.UUID,
-	ch <-chan simpleResult[existReply],
+	ch <-chan _Result[existReply],
 	st rState,
-) <-chan result[bool] {
-	resultCh := make(chan result[bool], 1)
+) <-chan _Result[bool] {
+	resultCh := make(chan _Result[bool], 1)
 	go func() {
 		defer close(resultCh)
 		var (
@@ -202,12 +197,12 @@ func (f *finderStream) readExistence(ctx context.Context,
 		)
 
 		for r := range ch { // len(ch) == st.Level
-			resp := r.Response
+			resp := r.Value
 			if r.Err != nil { // a least one node is not responding
 				f.log.WithField("op", "exists").WithField("replica", resp.Sender).
 					WithField("class", f.class).WithField("shard", shard).
 					WithField("uuid", id).Error(r.Err)
-				resultCh <- result[bool]{false, errRead}
+				resultCh <- _Result[bool]{false, errRead}
 				return
 			}
 
@@ -221,7 +216,7 @@ func (f *finderStream) readExistence(ctx context.Context,
 				}
 				if maxCount >= st.Level {
 					exists := !votes[i].o.Deleted && votes[i].o.UpdateTime != 0
-					resultCh <- result[bool]{exists, nil}
+					resultCh <- _Result[bool]{exists, nil}
 					return
 				}
 			}
@@ -229,10 +224,10 @@ func (f *finderStream) readExistence(ctx context.Context,
 
 		obj, err := f.repairExist(ctx, shard, id, votes, st)
 		if err == nil {
-			resultCh <- result[bool]{obj, nil}
+			resultCh <- _Result[bool]{obj, nil}
 			return
 		}
-		resultCh <- result[bool]{false, errRepair}
+		resultCh <- _Result[bool]{false, errRepair}
 
 		var sb strings.Builder
 		for i, c := range votes {

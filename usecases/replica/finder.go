@@ -112,10 +112,10 @@ func (f *Finder) GetOne(ctx context.Context,
 		return nil, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
 	result := <-f.readOne(ctx, shard, id, replyCh, state)
-	if err = result.err; err != nil {
+	if err = result.Err; err != nil {
 		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
 	}
-	return result.data, err
+	return result.Value, err
 }
 
 // GetAll gets all objects which satisfy the giving consistency
@@ -138,11 +138,11 @@ func (f *Finder) GetAll(ctx context.Context, l ConsistencyLevel, shard string,
 		return nil, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
 	result := <-f.readAll(ctx, shard, ids, replyCh, state)
-	if err = result.err; err != nil {
+	if err = result.Err; err != nil {
 		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
 	}
 
-	return result.data, err
+	return result.Value, err
 }
 
 // Exists checks if an object exists which satisfies the giving consistency
@@ -162,10 +162,10 @@ func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, i
 		return false, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
 	result := <-f.readExistence(ctx, shard, id, replyCh, state)
-	if err = result.err; err != nil {
+	if err = result.Err; err != nil {
 		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
 	}
-	return result.data, err
+	return result.Value, err
 }
 
 // NodeObject gets object from a specific node.

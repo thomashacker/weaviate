@@ -16,14 +16,14 @@ type (
 func (r replicatorStream) readErrors(
 	batchSize int,
 	level int,
-	ch <-chan simpleResult[SimpleResponse],
+	ch <-chan _Result[SimpleResponse],
 ) []error {
 	urs := make([]SimpleResponse, 0, level)
 	var firstError error
 	for x := range ch {
 		if x.Err != nil {
-			urs = append(urs, x.Response)
-			if len(x.Response.Errors) == 0 && firstError == nil {
+			urs = append(urs, x.Value)
+			if len(x.Value.Errors) == 0 && firstError == nil {
 				firstError = x.Err
 			}
 		} else {
@@ -44,20 +44,20 @@ func (r replicatorStream) readErrors(
 func (r replicatorStream) readDeletions(
 	batchSize int,
 	level int,
-	ch <-chan simpleResult[DeleteBatchResponse],
+	ch <-chan _Result[DeleteBatchResponse],
 ) []objects.BatchSimpleObject {
 	rs := make([]DeleteBatchResponse, 0, level)
 	urs := make([]DeleteBatchResponse, 0, level)
 	var firstError error
 	for x := range ch {
 		if x.Err != nil {
-			urs = append(urs, x.Response)
-			if len(x.Response.Batch) == 0 && firstError == nil {
+			urs = append(urs, x.Value)
+			if len(x.Value.Batch) == 0 && firstError == nil {
 				firstError = x.Err
 			}
 		} else {
 			level--
-			rs = append(rs, x.Response)
+			rs = append(rs, x.Value)
 			if level == 0 { // consistency level reached
 				return r.flattenDeletions(batchSize, rs, nil)
 			}

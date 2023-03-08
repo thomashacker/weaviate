@@ -39,14 +39,22 @@ const (
 // errBroadcast broadcast error
 var errBroadcast = errors.New("broadcast: cannot reach enough replicas")
 
-type shardingState interface {
-	NodeName() string
-	ResolveParentNodes(class, shardName string) (hosts, nodes []string, err error)
-}
+type (
+	shardingState interface {
+		NodeName() string
+		ResolveParentNodes(class, shardName string) (hosts, nodes []string, err error)
+	}
 
-type nodeResolver interface {
-	NodeHostname(nodeName string) (string, bool)
-}
+	nodeResolver interface {
+		NodeHostname(nodeName string) (string, bool)
+	}
+
+	// _Result represents a valid value or an error ( _ prevent make it public).
+	_Result[T any] struct {
+		Value T
+		Err   error
+	}
+)
 
 type Replicator struct {
 	class          string
@@ -104,7 +112,6 @@ func (r *Replicator) PutObject(ctx context.Context, shard string,
 	return err
 }
 
-// MergeObject replicates one object
 func (r *Replicator) MergeObject(ctx context.Context, shard string,
 	doc *objects.MergeDocument, l ConsistencyLevel,
 ) error {
@@ -274,6 +281,7 @@ func (r *Replicator) AddReferences(ctx context.Context, shard string,
 	return errs
 }
 
+// simpleCommit generate commit function for the coordinator
 func (r *Replicator) simpleCommit(shard string) commitOp[SimpleResponse] {
 	return func(ctx context.Context, host, requestID string) (SimpleResponse, error) {
 		resp := SimpleResponse{}
@@ -288,6 +296,10 @@ func (r *Replicator) simpleCommit(shard string) commitOp[SimpleResponse] {
 	}
 }
 
+// requestID returns ID as [CoordinatorName-OpCode-TimeStamp-Counter].
+// The coordinator uses it to uniquely identify a transaction.
+// ID makes the request observable in the cluster by specifying its origin
+// and the kind of replication request.
 func (r *Replicator) requestID(op opID) string {
 	return fmt.Sprintf("%s-%.2x-%x-%x",
 		r.stateGetter.NodeName(),
