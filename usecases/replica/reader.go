@@ -22,38 +22,39 @@ import (
 	"github.com/weaviate/weaviate/usecases/objects"
 )
 
-type reader struct {
-	class  string
-	client finderClient // needed to commit and abort operation
+// pullSteam is used by the finder to pull objects from replicas
+type pullStream struct {
 	repairer
 	log logrus.FieldLogger
 }
 
-type result[T any] struct {
-	data T
-	err  error
-}
-
-type tuple[T any] struct {
-	sender string
-	UTime  int64
-	o      T
-	ack    int
-	err    error
-}
-
 type (
-	objTuple  tuple[objects.Replica]
-	boolTuple tuple[RepairResponse]
+	// result represents a valid result or an error
+	result[T any] struct {
+		data T
+		err  error
+	}
+
+	// tuple encapsulate the returned data and its sender
+	tuple[T any] struct {
+		sender string
+		UTime  int64
+		o      T
+		ack    int
+		err    error
+	}
+
+	objTuple tuple[objects.Replica]
+
+	vote struct {
+		batchReply
+		Count []int
+		Err   error
+	}
 )
 
-type vote struct {
-	batchReply
-	Count []int
-	Err   error
-}
-
-func (f *reader) readOne(ctx context.Context,
+// readOne reads one replicated object
+func (f *pullStream) readOne(ctx context.Context,
 	shard string,
 	id strfmt.UUID,
 	ch <-chan simpleResult[findOneReply],
@@ -125,7 +126,8 @@ func (r batchReply) UpdateTimeAt(idx int) int64 {
 
 type _Results result[[]*storobj.Object]
 
-func (f *reader) readAll(ctx context.Context, shard string, ids []strfmt.UUID, ch <-chan simpleResult[batchReply], st rState) <-chan _Results {
+// readAll read in all replicated objects specified by their ids
+func (f *pullStream) readAll(ctx context.Context, shard string, ids []strfmt.UUID, ch <-chan simpleResult[batchReply], st rState) <-chan _Results {
 	resultCh := make(chan _Results, 1)
 
 	go func() {
@@ -185,7 +187,10 @@ func (f *reader) readAll(ctx context.Context, shard string, ids []strfmt.UUID, c
 	return resultCh
 }
 
-func (f *reader) readExistence(ctx context.Context,
+type boolTuple tuple[RepairResponse]
+
+// readExistence checks if replicated object exists
+func (f *pullStream) readExistence(ctx context.Context,
 	shard string,
 	id strfmt.UUID,
 	ch <-chan simpleResult[existReply],

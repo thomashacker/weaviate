@@ -60,11 +60,8 @@ type (
 
 // Finder finds replicated objects
 type Finder struct {
-	client   finderClient // needed to commit and abort operation
-	resolver *resolver    // host names of replicas
-	class    string
-	reader
-	log logrus.FieldLogger
+	resolver *resolver // host names of replicas
+	pullStream
 }
 
 // NewFinder constructs a new finder instance
@@ -74,23 +71,18 @@ func NewFinder(className string,
 ) *Finder {
 	cl := finderClient{client}
 	return &Finder{
-		client: cl,
 		resolver: &resolver{
 			schema:       stateGetter,
 			nodeResolver: nodeResolver,
 			class:        className,
 		},
-		class: className,
-		reader: reader{
-			class:  className,
-			client: cl,
+		pullStream: pullStream{
 			repairer: repairer{
 				class:  className,
 				client: cl,
 			},
 			log: l,
 		},
-		log: l,
 	}
 }
 
