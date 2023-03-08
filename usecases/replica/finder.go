@@ -57,8 +57,10 @@ type Finder struct {
 
 // NewFinder constructs a new finder instance
 func NewFinder(className string,
-	stateGetter shardingState, nodeResolver nodeResolver,
-	client RClient, l logrus.FieldLogger,
+	stateGetter shardingState,
+	nodeResolver nodeResolver,
+	client RClient,
+	l logrus.FieldLogger,
 ) *Finder {
 	cl := finderClient{client}
 	return &Finder{
@@ -80,7 +82,9 @@ func NewFinder(className string,
 // GetOne gets object which satisfies the giving consistency
 func (f *Finder) GetOne(ctx context.Context,
 	l ConsistencyLevel, shard string,
-	id strfmt.UUID, props search.SelectProperties, adds additional.Properties,
+	id strfmt.UUID,
+	props search.SelectProperties,
+	adds additional.Properties,
 ) (*storobj.Object, error) {
 	c := newReadCoordinator[findOneReply](f, shard)
 	op := func(ctx context.Context, host string, fullRead bool) (findOneReply, error) {
@@ -110,7 +114,9 @@ func (f *Finder) GetOne(ctx context.Context,
 }
 
 // GetAll gets all objects which satisfy the giving consistency
-func (f *Finder) GetAll(ctx context.Context, l ConsistencyLevel, shard string,
+func (f *Finder) GetAll(ctx context.Context,
+	l ConsistencyLevel,
+	shard string,
 	ids []strfmt.UUID,
 ) ([]*storobj.Object, error) {
 	c := newReadCoordinator[batchReply](f, shard)
@@ -137,7 +143,11 @@ func (f *Finder) GetAll(ctx context.Context, l ConsistencyLevel, shard string,
 }
 
 // Exists checks if an object exists which satisfies the giving consistency
-func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, id strfmt.UUID) (bool, error) {
+func (f *Finder) Exists(ctx context.Context,
+	l ConsistencyLevel,
+	shard string,
+	id strfmt.UUID,
+) (bool, error) {
 	c := newReadCoordinator[existReply](f, shard)
 	op := func(ctx context.Context, host string, _ bool) (existReply, error) {
 		xs, err := f.client.DigestReads(ctx, host, f.class, shard, []strfmt.UUID{id})
@@ -162,7 +172,9 @@ func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, i
 // NodeObject gets object from a specific node.
 // it is used mainly for debugging purposes
 func (f *Finder) NodeObject(ctx context.Context,
-	nodeName, shard string, id strfmt.UUID,
+	nodeName,
+	shard string,
+	id strfmt.UUID,
 	props search.SelectProperties, adds additional.Properties,
 ) (*storobj.Object, error) {
 	host, ok := f.resolver.NodeHostname(nodeName)

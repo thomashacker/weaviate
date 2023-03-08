@@ -15,8 +15,7 @@ type (
 
 // readErrors reads errors from incoming responses.
 // It returns as soon as the specified consistency level l has been reached
-func (r replicatorStream) readErrors(
-	batchSize int,
+func (r replicatorStream) readErrors(batchSize int,
 	level int,
 	ch <-chan _Result[SimpleResponse],
 ) []error {
@@ -43,8 +42,7 @@ func (r replicatorStream) readErrors(
 
 // readDeletions reads deletion results from incoming responses.
 // It returns as soon as the specified consistency level l has been reached
-func (r replicatorStream) readDeletions(
-	batchSize int,
+func (r replicatorStream) readDeletions(batchSize int,
 	level int,
 	ch <-chan _Result[DeleteBatchResponse],
 ) []objects.BatchSimpleObject {
@@ -74,8 +72,7 @@ func (r replicatorStream) readDeletions(
 
 // flattenErrors extracts errors from responses
 
-func (replicatorStream) flattenErrors(
-	batchSize int,
+func (replicatorStream) flattenErrors(batchSize int,
 	rs []SimpleResponse,
 	defaultErr error,
 ) []error {
@@ -103,8 +100,7 @@ func (replicatorStream) flattenErrors(
 }
 
 // flattenDeletions extracts deletion results from responses
-func (replicatorStream) flattenDeletions(
-	batchSize int,
+func (replicatorStream) flattenDeletions(batchSize int,
 	rs []DeleteBatchResponse,
 	defaultErr error,
 ) []objects.BatchSimpleObject {

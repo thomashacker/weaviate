@@ -80,8 +80,10 @@ func NewReplicator(className string,
 	}
 }
 
-func (r *Replicator) PutObject(ctx context.Context, shard string,
-	obj *storobj.Object, l ConsistencyLevel,
+func (r *Replicator) PutObject(ctx context.Context,
+	shard string,
+	obj *storobj.Object,
+	l ConsistencyLevel,
 ) error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opPutObject), r.log)
 	isReady := func(ctx context.Context, host, requestID string) error {
@@ -109,8 +111,10 @@ func (r *Replicator) PutObject(ctx context.Context, shard string,
 	return err
 }
 
-func (r *Replicator) MergeObject(ctx context.Context, shard string,
-	doc *objects.MergeDocument, l ConsistencyLevel,
+func (r *Replicator) MergeObject(ctx context.Context,
+	shard string,
+	doc *objects.MergeDocument,
+	l ConsistencyLevel,
 ) error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opMergeObject), r.log)
 	op := func(ctx context.Context, host, requestID string) error {
@@ -137,8 +141,10 @@ func (r *Replicator) MergeObject(ctx context.Context, shard string,
 	return err
 }
 
-func (r *Replicator) DeleteObject(ctx context.Context, shard string,
-	id strfmt.UUID, l ConsistencyLevel,
+func (r *Replicator) DeleteObject(ctx context.Context,
+	shard string,
+	id strfmt.UUID,
+	l ConsistencyLevel,
 ) error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opDeleteObject), r.log)
 	op := func(ctx context.Context, host, requestID string) error {
@@ -165,8 +171,10 @@ func (r *Replicator) DeleteObject(ctx context.Context, shard string,
 	return err
 }
 
-func (r *Replicator) PutObjects(ctx context.Context, shard string,
-	objs []*storobj.Object, l ConsistencyLevel,
+func (r *Replicator) PutObjects(ctx context.Context,
+	shard string,
+	objs []*storobj.Object,
+	l ConsistencyLevel,
 ) []error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opPutObjects), r.log)
 	op := func(ctx context.Context, host, requestID string) error {
@@ -199,8 +207,11 @@ func (r *Replicator) PutObjects(ctx context.Context, shard string,
 	return errs
 }
 
-func (r *Replicator) DeleteObjects(ctx context.Context, shard string,
-	docIDs []uint64, dryRun bool, l ConsistencyLevel,
+func (r *Replicator) DeleteObjects(ctx context.Context,
+	shard string,
+	docIDs []uint64,
+	dryRun bool,
+	l ConsistencyLevel,
 ) []objects.BatchSimpleObject {
 	coord := newCoordinator[DeleteBatchResponse](r, shard, r.requestID(opDeleteObjects), r.log)
 	op := func(ctx context.Context, host, requestID string) error {
@@ -245,8 +256,10 @@ func (r *Replicator) DeleteObjects(ctx context.Context, shard string,
 	return rs
 }
 
-func (r *Replicator) AddReferences(ctx context.Context, shard string,
-	refs []objects.BatchReference, l ConsistencyLevel,
+func (r *Replicator) AddReferences(ctx context.Context,
+	shard string,
+	refs []objects.BatchReference,
+	l ConsistencyLevel,
 ) []error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opAddReferences), r.log)
 	op := func(ctx context.Context, host, requestID string) error {

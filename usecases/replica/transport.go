@@ -65,7 +65,9 @@ func (e *Error) Clone() *Error {
 // Unwrap underlying error
 func (e *Error) Unwrap() error { return e.Err }
 
-func (e *Error) Error() string { return fmt.Sprintf("%s %q: %v", statusText(e.Code), e.Msg, e.Err) }
+func (e *Error) Error() string {
+	return fmt.Sprintf("%s %q: %v", statusText(e.Code), e.Msg, e.Err)
+}
 
 func (e *Error) IsStatusCode(sc StatusCode) bool {
 	return e.Code == sc

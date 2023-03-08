@@ -119,8 +119,12 @@ type (
 	}
 )
 
-// readAll read in all replicated objects specified by their ids
-func (f *finderStream) readAll(ctx context.Context, shard string, ids []strfmt.UUID, ch <-chan _Result[batchReply], st rState) <-chan batchResult {
+// readAll reads in replicated objects specified by their ids
+func (f *finderStream) readAll(ctx context.Context,
+	shard string,
+	ids []strfmt.UUID,
+	ch <-chan _Result[batchReply], st rState,
+) <-chan batchResult {
 	resultCh := make(chan batchResult, 1)
 
 	go func() {

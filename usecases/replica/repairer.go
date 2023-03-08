@@ -32,7 +32,7 @@ type repairer struct {
 	client finderClient // needed to commit and abort operation
 }
 
-// repairOne repairs a single object (use in combination with Finder::GetOne)
+// repairOne repairs a single object (used by Finder::GetOne)
 func (r *repairer) repairOne(ctx context.Context,
 	shard string,
 	id strfmt.UUID,
