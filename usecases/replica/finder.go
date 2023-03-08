@@ -60,8 +60,8 @@ type (
 
 // Finder finds replicated objects
 type Finder struct {
-	resolver   *resolver // host names of replicas
-	pullStream           // stream of objects
+	resolver     *resolver // host names of replicas
+	finderStream           // stream of objects
 }
 
 // NewFinder constructs a new finder instance
@@ -76,7 +76,7 @@ func NewFinder(className string,
 			nodeResolver: nodeResolver,
 			class:        className,
 		},
-		pullStream: pullStream{
+		finderStream: finderStream{
 			repairer: repairer{
 				class:  className,
 				client: cl,

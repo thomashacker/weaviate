@@ -23,7 +23,7 @@ import (
 )
 
 // pullSteam is used by the finder to pull objects from replicas
-type pullStream struct {
+type finderStream struct {
 	repairer
 	log logrus.FieldLogger
 }
@@ -49,7 +49,7 @@ type (
 )
 
 // readOne reads one replicated object
-func (f *pullStream) readOne(ctx context.Context,
+func (f *finderStream) readOne(ctx context.Context,
 	shard string,
 	id strfmt.UUID,
 	ch <-chan simpleResult[findOneReply],
@@ -124,7 +124,7 @@ type (
 )
 
 // readAll read in all replicated objects specified by their ids
-func (f *pullStream) readAll(ctx context.Context, shard string, ids []strfmt.UUID, ch <-chan simpleResult[batchReply], st rState) <-chan batchResult {
+func (f *finderStream) readAll(ctx context.Context, shard string, ids []strfmt.UUID, ch <-chan simpleResult[batchReply], st rState) <-chan batchResult {
 	resultCh := make(chan batchResult, 1)
 
 	go func() {
@@ -187,7 +187,7 @@ func (f *pullStream) readAll(ctx context.Context, shard string, ids []strfmt.UUI
 type boolTuple tuple[RepairResponse]
 
 // readExistence checks if replicated object exists
-func (f *pullStream) readExistence(ctx context.Context,
+func (f *finderStream) readExistence(ctx context.Context,
 	shard string,
 	id strfmt.UUID,
 	ch <-chan simpleResult[existReply],

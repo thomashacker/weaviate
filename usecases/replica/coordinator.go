@@ -38,6 +38,11 @@ type (
 		Shard    string
 		TxID     string // transaction ID
 	}
+	// simpleResult encapsulates the response together with the error
+	simpleResult[T any] struct {
+		Response T
+		Err      error
+	}
 )
 
 func newCoordinator[T any](r *Replicator, shard, requestID string, l logrus.FieldLogger) *coordinator[T] {
