@@ -55,6 +55,7 @@ type Replicator struct {
 	resolver       nodeResolver
 	log            logrus.FieldLogger
 	requestCounter atomic.Uint64
+	stream         replicatorStream
 	*Finder
 }
 
@@ -95,7 +96,7 @@ func (r *Replicator) PutObject(ctx context.Context, shard string,
 		return fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 
 	}
-	err = readSimpleResponses(1, level, replyCh)[0]
+	err = r.stream.readErrors(1, level, replyCh)[0]
 	if err != nil {
 		r.log.WithField("op", "put").WithField("class", r.class).
 			WithField("shard", shard).WithField("uuid", obj.ID()).Error(err)
@@ -103,6 +104,7 @@ func (r *Replicator) PutObject(ctx context.Context, shard string,
 	return err
 }
 
+// MergeObject replicates one object
 func (r *Replicator) MergeObject(ctx context.Context, shard string,
 	doc *objects.MergeDocument, l ConsistencyLevel,
 ) error {
@@ -123,7 +125,7 @@ func (r *Replicator) MergeObject(ctx context.Context, shard string,
 			WithField("shard", shard).Error(err)
 		return fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
-	err = readSimpleResponses(1, level, replyCh)[0]
+	err = r.stream.readErrors(1, level, replyCh)[0]
 	if err != nil {
 		r.log.WithField("op", "put").WithField("class", r.class).
 			WithField("shard", shard).WithField("uuid", doc.ID).Error(err)
@@ -151,7 +153,7 @@ func (r *Replicator) DeleteObject(ctx context.Context, shard string,
 			WithField("shard", shard).Error(err)
 		return fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
-	err = readSimpleResponses(1, level, replyCh)[0]
+	err = r.stream.readErrors(1, level, replyCh)[0]
 	if err != nil {
 		r.log.WithField("op", "put").WithField("class", r.class).
 			WithField("shard", shard).WithField("uuid", id).Error(err)
@@ -185,7 +187,7 @@ func (r *Replicator) PutObjects(ctx context.Context, shard string,
 		}
 		return errs
 	}
-	errs := readSimpleResponses(len(objs), level, replyCh)
+	errs := r.stream.readErrors(len(objs), level, replyCh)
 	if err := firstError(errs); err != nil {
 		r.log.WithField("op", "put.many").WithField("class", r.class).
 			WithField("shard", shard).Error(errs)
@@ -231,7 +233,7 @@ func (r *Replicator) DeleteObjects(ctx context.Context, shard string,
 		}
 		return errs
 	}
-	rs := readDeletionResponses(len(docIDs), level, replyCh)
+	rs := r.stream.readDeletions(len(docIDs), level, replyCh)
 	if err := firstBatchError(rs); err != nil {
 		r.log.WithField("op", "put.many").WithField("class", r.class).
 			WithField("shard", shard).Error(rs)
@@ -264,7 +266,7 @@ func (r *Replicator) AddReferences(ctx context.Context, shard string,
 		}
 		return errs
 	}
-	errs := readSimpleResponses(len(refs), level, replyCh)
+	errs := r.stream.readErrors(len(refs), level, replyCh)
 	if err := firstError(errs); err != nil {
 		r.log.WithField("op", "put.refs").WithField("class", r.class).
 			WithField("shard", shard).Error(errs)
@@ -292,22 +294,4 @@ func (r *Replicator) requestID(op opID) string {
 		op,
 		time.Now().UnixMilli(),
 		r.requestCounter.Add(1))
-}
-
-func firstError(es []error) error {
-	for _, e := range es {
-		if e != nil {
-			return e
-		}
-	}
-	return nil
-}
-
-func firstBatchError(xs []objects.BatchSimpleObject) error {
-	for _, x := range xs {
-		if x.Err != nil {
-			return x.Err
-		}
-	}
-	return nil
 }

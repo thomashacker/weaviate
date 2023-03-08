@@ -5,7 +5,19 @@ import (
 	"github.com/weaviate/weaviate/usecases/objects"
 )
 
-func readSimpleResponses(batchSize int, level int, ch <-chan simpleResult[SimpleResponse]) []error {
+type (
+	// replicatorStream represents an incoming stream of responses
+	// to replication requests sent to replicas
+	replicatorStream struct{}
+)
+
+// readErrors reads errors from incoming responses.
+// It returns as soon as the specified consistency level l has been reached
+func (r replicatorStream) readErrors(
+	batchSize int,
+	level int,
+	ch <-chan simpleResult[SimpleResponse],
+) []error {
 	urs := make([]SimpleResponse, 0, level)
 	var firstError error
 	for x := range ch {
@@ -16,7 +28,7 @@ func readSimpleResponses(batchSize int, level int, ch <-chan simpleResult[Simple
 			}
 		} else {
 			level--
-			if level == 0 {
+			if level == 0 { // consistency level reached
 				return make([]error, batchSize)
 			}
 		}
@@ -24,10 +36,16 @@ func readSimpleResponses(batchSize int, level int, ch <-chan simpleResult[Simple
 	if level > 0 && firstError == nil {
 		firstError = errBroadcast
 	}
-	return errorsFromSimpleResponses(batchSize, urs, firstError)
+	return r.flattenErrors(batchSize, urs, firstError)
 }
 
-func readDeletionResponses(batchSize int, level int, ch <-chan simpleResult[DeleteBatchResponse]) []objects.BatchSimpleObject {
+// readDeletions reads deletion results from incoming responses.
+// It returns as soon as the specified consistency level l has been reached
+func (r replicatorStream) readDeletions(
+	batchSize int,
+	level int,
+	ch <-chan simpleResult[DeleteBatchResponse],
+) []objects.BatchSimpleObject {
 	rs := make([]DeleteBatchResponse, 0, level)
 	urs := make([]DeleteBatchResponse, 0, level)
 	var firstError error
@@ -40,8 +58,8 @@ func readDeletionResponses(batchSize int, level int, ch <-chan simpleResult[Dele
 		} else {
 			level--
 			rs = append(rs, x.Response)
-			if level == 0 {
-				return resultsFromDeletionResponses(batchSize, rs, nil)
+			if level == 0 { // consistency level reached
+				return r.flattenDeletions(batchSize, rs, nil)
 			}
 		}
 	}
@@ -49,10 +67,16 @@ func readDeletionResponses(batchSize int, level int, ch <-chan simpleResult[Dele
 		firstError = errBroadcast
 	}
 	urs = append(urs, rs...)
-	return resultsFromDeletionResponses(batchSize, urs, firstError)
+	return r.flattenDeletions(batchSize, urs, firstError)
 }
 
-func errorsFromSimpleResponses(batchSize int, rs []SimpleResponse, defaultErr error) []error {
+// flattenErrors extracts errors from responses
+
+func (replicatorStream) flattenErrors(
+	batchSize int,
+	rs []SimpleResponse,
+	defaultErr error,
+) []error {
 	errs := make([]error, batchSize)
 	n := 0
 	for _, resp := range rs {
@@ -76,7 +100,12 @@ func errorsFromSimpleResponses(batchSize int, rs []SimpleResponse, defaultErr er
 	return errs
 }
 
-func resultsFromDeletionResponses(batchSize int, rs []DeleteBatchResponse, defaultErr error) []objects.BatchSimpleObject {
+// flattenDeletions extracts deletion results from responses
+func (replicatorStream) flattenDeletions(
+	batchSize int,
+	rs []DeleteBatchResponse,
+	defaultErr error,
+) []objects.BatchSimpleObject {
 	ret := make([]objects.BatchSimpleObject, batchSize)
 	n := 0
 	for _, resp := range rs {
@@ -101,4 +130,22 @@ func resultsFromDeletionResponses(batchSize int, rs []DeleteBatchResponse, defau
 		}
 	}
 	return ret
+}
+
+func firstError(es []error) error {
+	for _, e := range es {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+func firstBatchError(xs []objects.BatchSimpleObject) error {
+	for _, x := range xs {
+		if x.Err != nil {
+			return x.Err
+		}
+	}
+	return nil
 }
