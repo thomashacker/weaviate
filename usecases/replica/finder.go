@@ -43,7 +43,7 @@ var (
 )
 
 type (
-	// senderReply represent the data received from a sender
+	// senderReply is a container for the data received from a replica
 	senderReply[T any] struct {
 		sender     string // hostname of the sender
 		Version    int64  // sender's current version of the object
@@ -60,8 +60,8 @@ type (
 
 // Finder finds replicated objects
 type Finder struct {
-	resolver *resolver // host names of replicas
-	pullStream
+	resolver   *resolver // host names of replicas
+	pullStream           // stream of objects
 }
 
 // NewFinder constructs a new finder instance
@@ -116,19 +116,6 @@ func (f *Finder) GetOne(ctx context.Context,
 		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
 	}
 	return result.data, err
-}
-
-// batchReply represents the data returned by sender
-// The returned data may result from a full or digest read request
-type batchReply struct {
-	// Sender hostname of the sender
-	Sender string
-	// IsDigest is this reply from a digest read?
-	IsDigest bool
-	// FullData returned from a full read request
-	FullData []objects.Replica
-	// DigestData returned from a digest read request
-	DigestData []RepairResponse
 }
 
 // GetAll gets all objects which satisfy the giving consistency
