@@ -1,6 +1,8 @@
 package replica
 
 import (
+	"fmt"
+
 	"github.com/go-openapi/strfmt"
 	"github.com/weaviate/weaviate/usecases/objects"
 )
@@ -34,7 +36,7 @@ func (r replicatorStream) readErrors(
 		}
 	}
 	if level > 0 && firstError == nil {
-		firstError = errBroadcast
+		firstError = fmt.Errorf("broadcast: %w", errReplicas)
 	}
 	return r.flattenErrors(batchSize, urs, firstError)
 }
@@ -64,7 +66,7 @@ func (r replicatorStream) readDeletions(
 		}
 	}
 	if level > 0 && firstError == nil {
-		firstError = errBroadcast
+		firstError = fmt.Errorf("broadcast: %w", errReplicas)
 	}
 	urs = append(urs, rs...)
 	return r.flattenDeletions(batchSize, urs, firstError)

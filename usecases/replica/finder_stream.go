@@ -64,7 +64,8 @@ func (f *finderStream) readOne(ctx context.Context,
 			resp := r.Value
 			if r.Err != nil { // a least one node is not responding
 				f.log.WithField("op", "get").WithField("replica", resp.sender).
-					WithField("class", f.class).WithField("shard", shard).WithField("uuid", id).Error(r.Err)
+					WithField("class", f.class).WithField("shard", shard).
+					WithField("uuid", id).Error(r.Err)
 				resultCh <- objResult{nil, errRead}
 				return
 			}

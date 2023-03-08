@@ -13,7 +13,6 @@ package replica
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/weaviate/weaviate/usecases/objects"
 )
 
+// opID operation encode as and int
 type opID int
 
 const (
@@ -35,9 +35,6 @@ const (
 	opAddReferences
 	opDeleteObjects
 )
-
-// errBroadcast broadcast error
-var errBroadcast = errors.New("broadcast: cannot reach enough replicas")
 
 type (
 	shardingState interface {

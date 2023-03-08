@@ -27,17 +27,8 @@ import (
 var (
 	// msgCLevel consistency level cannot be achieved
 	msgCLevel = "cannot achieve consistency level"
-	// errConflictFindDeleted object exists on one replica but is deleted on the other.
-	//
-	// It depends on the order of operations
-	// Created -> Deleted    => It is safe in this case to propagate deletion to all replicas
-	// Created -> Deleted -> Created => propagating deletion will result in data lost
-	errConflictExistOrDeleted = errors.New("conflict: object has been deleted on another replica")
 
-	// errConflictObjectChanged object changed since last time and cannot be repaired
-	errConflictObjectChanged = errors.New("source object changed during repair")
-
-	errReplicas = errors.New("cannot find enough replicas")
+	errReplicas = errors.New("cannot reach enough replicas")
 	errRepair   = errors.New("read repair error")
 	errRead     = errors.New("read error")
 )
