@@ -59,7 +59,7 @@ type Finder struct {
 func NewFinder(className string,
 	stateGetter shardingState,
 	nodeResolver nodeResolver,
-	client RClient,
+	client rClient,
 	l logrus.FieldLogger,
 ) *Finder {
 	cl := finderClient{client}

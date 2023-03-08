@@ -705,8 +705,8 @@ func (f fakeFactory) newReplicator() *Replicator {
 		shardingState,
 		nodeResolver,
 		struct {
-			RClient
-			WClient
+			rClient
+			wClient
 		}{f.RClient, f.WClient}, f.log)
 }
 
