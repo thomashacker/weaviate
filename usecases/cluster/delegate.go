@@ -109,7 +109,10 @@ func (d *delegate) init() error {
 	}
 
 	d.set(d.Name, NodeInfo{space, time.Now().UnixMilli()}) // cache
-	d.log.WithField("total_space", space.Total).WithField("free_space", space.Available).Info("initialize delegate")
+	if d.Name == "" {
+		d.log.Error("node name cannot be empty")
+	}
+	d.log.WithField("node", d.Name).WithField("total_space", space.Total).WithField("free_space", space.Available).Info("initialize delegate")
 	return nil
 }
 
@@ -125,6 +128,9 @@ func (d *delegate) NodeMeta(limit int) (meta []byte) {
 // data can be sent here. See MergeRemoteState as well. The `join`
 // boolean indicates this is for a join instead of a push/pull.
 func (d *delegate) LocalState(join bool) []byte {
+	if d.Name == "" {
+		d.log.Error("local_state.node name cannot be empty")
+	}
 	prv, _ := d.get(d.Name) // value from cache
 	var (
 		info NodeInfo = prv
@@ -145,7 +151,7 @@ func (d *delegate) LocalState(join bool) []byte {
 	} else {
 		d.log.Info("cache still valid: ")
 	}
-	d.log.WithField("total", info.Total).WithField("free", info.Available).Info("spreed host own free space")
+	d.log.WithField("total", info.Total).WithField("free", info.Available).Info("spreed host own free space", d.Name)
 
 	x := spaceMsg{
 		header{OpCode: _OpCodeDisk, ProtoVersion: _ProtoVersion},
@@ -166,6 +172,7 @@ func (d *delegate) LocalState(join bool) []byte {
 func (d *delegate) MergeRemoteState(data []byte, join bool) {
 	var x spaceMsg
 	if err := x.unmarshal(data); err != nil || x.Node == "" {
+		d.log.Error("marshaling error node", x.Node, string(data))
 		return
 	}
 	info := NodeInfo{x.DiskUsage, time.Now().UnixMilli()}
