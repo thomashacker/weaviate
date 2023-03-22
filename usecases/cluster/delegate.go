@@ -109,7 +109,7 @@ func (d *delegate) init() error {
 	}
 
 	d.set(d.Name, NodeInfo{space, time.Now().UnixMilli()}) // cache
-	d.log.WithField("total_space", space.Total).WithField("free_space", space.Available).Debug("initialize delegate")
+	d.log.WithField("total_space", space.Total).WithField("free_space", space.Available).Info("initialize delegate")
 	return nil
 }
 
@@ -134,7 +134,7 @@ func (d *delegate) LocalState(join bool) []byte {
 	if prv.Available == 0 || time.Since(time.UnixMilli(prv.LastTimeMilli)) >= _ProtoTTL {
 		info.DiskUsage, err = d.diskUsage(d.dataPath)
 		if err != nil {
-			d.log.Debug("local_state.disk_space: " + err.Error())
+			d.log.Info("local_state.disk_space: " + err.Error())
 			return nil
 		}
 		info.LastTimeMilli = time.Now().UnixMilli()
@@ -143,9 +143,9 @@ func (d *delegate) LocalState(join bool) []byte {
 	if prv.LastTimeMilli != info.LastTimeMilli {
 		d.set(d.Name, info) // cache new value
 	} else {
-		d.log.Debug("cache still valid: ")
+		d.log.Info("cache still valid: ")
 	}
-	d.log.WithField("total", info.Total).WithField("free", info.Available).Debug("spreed host own free space")
+	d.log.WithField("total", info.Total).WithField("free", info.Available).Info("spreed host own free space")
 
 	x := spaceMsg{
 		header{OpCode: _OpCodeDisk, ProtoVersion: _ProtoVersion},
@@ -170,7 +170,7 @@ func (d *delegate) MergeRemoteState(data []byte, join bool) {
 	}
 	info := NodeInfo{x.DiskUsage, time.Now().UnixMilli()}
 	d.set(x.Node, info)
-	d.log.WithField("total", info.Total).WithField("free", info.Available).Debug("received from:", x.Node)
+	d.log.WithField("total", info.Total).WithField("free", info.Available).Info("received from:", x.Node)
 }
 
 func (d *delegate) NotifyMsg(data []byte) {}
@@ -213,12 +213,12 @@ func (d *delegate) sortCandidates(names []string) []string {
 	m := d.Cache
 
 	for k, x := range d.Cache {
-		d.log.WithField("node", k).WithField("total", x.Total).WithField("free", x.Available).WithField("time", x.LastTimeMilli).Debug("state before sorting candidates")
+		d.log.WithField("node", k).WithField("total", x.Total).WithField("free", x.Available).WithField("time", x.LastTimeMilli).Info("state before sorting candidates")
 	}
 	sort.Slice(names, func(i, j int) bool {
 		return (m[names[j]].Available >> 12) < (m[names[i]].Available >> 12)
 	})
-	d.log.WithField("selected_nodes", names).Debug("sorted candidates")
+	d.log.WithField("selected_nodes", names).Info("sorted candidates")
 	return names
 }
 
