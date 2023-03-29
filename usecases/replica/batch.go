@@ -51,7 +51,7 @@ type batchPart struct {
 	Node  string
 
 	Data  []*storobj.Object
-	Index []int
+	Index []int  // index for data
 	Oks   []bool // consistency flags
 }
 
