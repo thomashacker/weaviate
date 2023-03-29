@@ -3,6 +3,7 @@ package replica
 import (
 	"sort"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/weaviate/weaviate/entities/storobj"
 )
 
@@ -12,40 +13,52 @@ type batchInput struct {
 	Oks   []bool // consistency flags
 }
 
-type batchPart struct {
-	data  []*storobj.Object
-	index []int
-	Oks   []bool // consistency flags
-	node  string
-}
-
-func create(xs []*storobj.Object, ds []ShardDesc) batchInput {
+func createBatch(xs []*storobj.Object) batchInput {
 	var bi batchInput
 	bi.Data = xs
 	bi.Index = make([]int, len(xs))
+	for i := 0; i < len(xs); i++ {
+		bi.Index[i] = i
+	}
 	bi.Oks = make([]bool, len(xs))
 	return bi
 }
 
-func cluster(bi batchInput, ds []ShardDesc) map[string]batchPart {
+func cluster(bi batchInput, ds []ShardDesc) []batchPart {
 	index := bi.Index
 	sort.Slice(index, func(i, j int) bool {
 		return ds[index[i]].Name < ds[index[j]].Name
 	})
-	m := make(map[string]batchPart, 16)
+	clusters := make([]batchPart, 0, 16)
 	// partition
-	n := index[0]
 	cur := ds[index[0]]
 	j := 0
-	for i := 1; i < n; i++ {
+	for i := 1; i < len(index); i++ {
 		if ds[index[i]].Name == cur.Name {
 			continue
 		}
-		m[cur.Name] = batchPart{bi.Data, index[j:i], bi.Oks, cur.Node}
+		clusters = append(clusters, batchPart{cur.Name, cur.Node, bi.Data, index[j:i], bi.Oks})
 		j = i
 		cur = ds[index[j]]
 
 	}
-	m[cur.Name] = batchPart{bi.Data, index[j:], bi.Oks, cur.Node}
-	return nil
+	clusters = append(clusters, batchPart{cur.Name, cur.Node, bi.Data, index[j:], bi.Oks})
+	return clusters
+}
+
+type batchPart struct {
+	Shard string
+	Node  string
+
+	Data  []*storobj.Object
+	Index []int
+	Oks   []bool // consistency flags
+}
+
+func (b *batchPart) ObjectIDs() []strfmt.UUID {
+	xs := make([]strfmt.UUID, len(b.Index))
+	for i, idx := range b.Index {
+		xs[i] = b.Data[idx].ID()
+	}
+	return xs
 }
