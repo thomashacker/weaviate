@@ -24,25 +24,36 @@ func createBatch(xs []*storobj.Object) batchInput {
 	return bi
 }
 
-func cluster(bi batchInput, ds []ShardDesc) []batchPart {
+func cluster(bi batchInput) []batchPart {
 	index := bi.Index
+	data := bi.Data
 	sort.Slice(index, func(i, j int) bool {
-		return ds[index[i]].Name < ds[index[j]].Name
+		return data[index[i]].BelongsToShard < data[index[j]].BelongsToShard
 	})
 	clusters := make([]batchPart, 0, 16)
 	// partition
-	cur := ds[index[0]]
+	cur := data[index[0]]
 	j := 0
 	for i := 1; i < len(index); i++ {
-		if ds[index[i]].Name == cur.Name {
+		if data[index[i]].BelongsToShard == cur.BelongsToShard {
 			continue
 		}
-		clusters = append(clusters, batchPart{cur.Name, cur.Node, bi.Data, index[j:i], bi.Oks})
+		clusters = append(clusters, batchPart{
+			Shard: cur.BelongsToShard,
+			Node:  cur.BelongsToNode, Data: data,
+			Index: index[j:i],
+			Oks:   bi.Oks,
+		})
 		j = i
-		cur = ds[index[j]]
+		cur = data[index[j]]
 
 	}
-	clusters = append(clusters, batchPart{cur.Name, cur.Node, bi.Data, index[j:], bi.Oks})
+	clusters = append(clusters, batchPart{
+		Shard: cur.BelongsToShard,
+		Node:  cur.BelongsToNode, Data: data,
+		Index: index[j:],
+		Oks:   bi.Oks,
+	})
 	return clusters
 }
 
