@@ -9,8 +9,7 @@ import (
 
 type batchInput struct {
 	Data  []*storobj.Object
-	Index []int  // z-index for data
-	Oks   []bool // consistency flags
+	Index []int // z-index for data
 }
 
 func createBatch(xs []*storobj.Object) batchInput {
@@ -20,7 +19,6 @@ func createBatch(xs []*storobj.Object) batchInput {
 	for i := 0; i < len(xs); i++ {
 		bi.Index[i] = i
 	}
-	bi.Oks = make([]bool, len(xs))
 	return bi
 }
 
@@ -42,7 +40,6 @@ func cluster(bi batchInput) []batchPart {
 			Shard: cur.BelongsToShard,
 			Node:  cur.BelongsToNode, Data: data,
 			Index: index[j:i],
-			Oks:   bi.Oks,
 		})
 		j = i
 		cur = data[index[j]]
@@ -52,7 +49,6 @@ func cluster(bi batchInput) []batchPart {
 		Shard: cur.BelongsToShard,
 		Node:  cur.BelongsToNode, Data: data,
 		Index: index[j:],
-		Oks:   bi.Oks,
 	})
 	return clusters
 }
@@ -62,8 +58,7 @@ type batchPart struct {
 	Node  string
 
 	Data  []*storobj.Object
-	Index []int  // index for data
-	Oks   []bool // consistency flags
+	Index []int // index for data
 }
 
 func (b *batchPart) ObjectIDs() []strfmt.UUID {

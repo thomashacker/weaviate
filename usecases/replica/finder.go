@@ -148,20 +148,23 @@ type ShardDesc struct {
 }
 
 func (f *Finder) CheckConsistency(ctx context.Context,
-	l ConsistencyLevel, xs []*storobj.Object, ds []ShardDesc,
-) ([]bool, error) {
-	if len(xs) != len(ds) {
-		return nil, fmt.Errorf("invalid parameters")
+	l ConsistencyLevel, xs []*storobj.Object,
+) error {
+	if len(xs) == 0 {
+		return nil
 	}
-	// todo validate xs[i] != nil ds[i].{shard and node} != ""
-	cflags := make([]bool, len(xs))
+	for i := range xs {
+		if xs[i].BelongsToNode == "" || xs[i].BelongsToShard == "" {
+			return fmt.Errorf("missing node or shard at index %d", i)
+		}
+	}
 	// TODO:
 	// 1. Aggregate result set by shard
 	// 2. Aggregate the result set of a shard by node (owner of objects)
 	// 3. Set digest requests for non owning nodes
 	// 4. Check the consistency level for each shard
 	// 5. Repair for each shard
-	return cflags, nil
+	return nil
 }
 
 // Exists checks if an object exists which satisfies the giving consistency
