@@ -712,8 +712,12 @@ func (f fakeFactory) newReplicator() *Replicator {
 
 func (f fakeFactory) newFinder() *Finder {
 	nodeResolver := newFakeNodeResolver(f.Nodes)
-	shardingState := newFakeShardingState(f.Shard2replicas, nodeResolver)
-	return NewFinder(f.CLS, shardingState, nodeResolver, f.RClient, f.log)
+	resolver := &resolver{
+		Schema:       newFakeShardingState(f.Shard2replicas, nodeResolver),
+		nodeResolver: nodeResolver,
+		Class:        f.CLS,
+	}
+	return NewFinder(f.CLS, resolver, f.RClient, f.log)
 }
 
 func (f fakeFactory) assertLogContains(t *testing.T, key string, xs ...string) {

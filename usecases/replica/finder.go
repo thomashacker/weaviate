@@ -57,18 +57,13 @@ type Finder struct {
 
 // NewFinder constructs a new finder instance
 func NewFinder(className string,
-	stateGetter shardingState,
-	nodeResolver nodeResolver,
+	resolver *resolver,
 	client rClient,
 	l logrus.FieldLogger,
 ) *Finder {
 	cl := finderClient{client}
 	return &Finder{
-		resolver: &resolver{
-			schema:       stateGetter,
-			nodeResolver: nodeResolver,
-			class:        className,
-		},
+		resolver: resolver,
 		finderStream: finderStream{
 			repairer: repairer{
 				class:  className,
