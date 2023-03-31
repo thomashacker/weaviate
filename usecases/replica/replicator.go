@@ -39,7 +39,7 @@ const (
 type (
 	shardingState interface {
 		NodeName() string
-		ResolveParentNodes(class, shardName string) (hosts, nodes []string, err error)
+		ResolveParentNodes(class, shardName string) (map[string]string, error)
 	}
 
 	nodeResolver interface {

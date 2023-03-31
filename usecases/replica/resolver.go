@@ -54,7 +54,34 @@ type resolver struct {
 // State returns replicas state
 func (r *resolver) State(shardName string, cl ConsistencyLevel) (res rState, err error) {
 	res.CLevel = cl
-	res.Hosts, res.nodes, err = r.Schema.ResolveParentNodes(r.Class, shardName)
+	m, err := r.Schema.ResolveParentNodes(r.Class, shardName)
+	if err != nil {
+		return res, err
+	}
+
+	// count number of valid addr
+	n := 0
+	for name, addr := range m {
+		if name != "" && addr != "" {
+			n++
+		}
+	}
+	res.Hosts = make([]string, 0, n)
+	res.nodes = make([]string, 0, len(m)-n)
+
+	// This node should be the first to respond in case if the shard is locally available
+	if addr := m[r.NodeName]; addr != "" {
+		res.Hosts = append(res.Hosts, addr)
+		delete(m, r.NodeName)
+	}
+	for name, addr := range m {
+		if name != "" && addr != "" {
+			res.Hosts = append(res.Hosts, addr)
+		} else {
+			res.nodes = append(res.nodes, name)
+		}
+	}
+
 	if err != nil {
 		return res, err
 	}

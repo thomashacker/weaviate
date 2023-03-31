@@ -699,7 +699,7 @@ func newFakeFactory(class, shard string, nodes []string) *fakeFactory {
 
 func (f fakeFactory) newReplicator() *Replicator {
 	nodeResolver := newFakeNodeResolver(f.Nodes)
-	shardingState := newFakeShardingState(f.Shard2replicas, nodeResolver)
+	shardingState := newFakeShardingState("A", f.Shard2replicas, nodeResolver)
 	return NewReplicator(
 		f.CLS,
 		shardingState,
@@ -710,12 +710,13 @@ func (f fakeFactory) newReplicator() *Replicator {
 		}{f.RClient, f.WClient}, f.log)
 }
 
-func (f fakeFactory) newFinder() *Finder {
+func (f fakeFactory) newFinder(thisNode string) *Finder {
 	nodeResolver := newFakeNodeResolver(f.Nodes)
 	resolver := &resolver{
-		Schema:       newFakeShardingState(f.Shard2replicas, nodeResolver),
+		Schema:       newFakeShardingState(thisNode, f.Shard2replicas, nodeResolver),
 		nodeResolver: nodeResolver,
 		Class:        f.CLS,
+		NodeName:     thisNode,
 	}
 	return NewFinder(f.CLS, resolver, f.RClient, f.log)
 }
