@@ -26,10 +26,22 @@ func TestResolver(t *testing.T) {
 		"S4": {"D", "E", "F"},
 		"S5": {"A", "B", "C", "D", "E", "F"},
 	}
+	assertSameHosts := func(want, got rState, thisNode string) {
+		t.Helper()
+		if thisNode != "" {
+			assert.Equal(t, thisNode, got.Hosts[0])
+		}
+		assert.ElementsMatch(t, want.Hosts, got.Hosts)
+		assert.ElementsMatch(t, want.nodes, got.nodes)
+		assert.Equal(t, want.CLevel, got.CLevel)
+		assert.Equal(t, want.Level, got.Level)
+	}
 
 	nr := newFakeNodeResolver([]string{"A", "B", "C"})
 	r := resolver{
 		nodeResolver: nr,
+		Class:        "C",
+		NodeName:     "A",
 		Schema:       newFakeShardingState("A", ss, nr),
 	}
 	t.Run("ShardingState", func(t *testing.T) {
@@ -38,16 +50,22 @@ func TestResolver(t *testing.T) {
 		assert.Contains(t, err.Error(), "sharding state")
 	})
 	t.Run("ALL", func(t *testing.T) {
+		r := resolver{
+			nodeResolver: nr,
+			Class:        "C",
+			NodeName:     "B",
+			Schema:       newFakeShardingState("B", ss, nr),
+		}
 		got, err := r.State("S1", All)
 		assert.Nil(t, err)
 		want := rState{All, len(ss["S1"]), ss["S1"], nil}
-		assert.Equal(t, want, got)
+		assertSameHosts(want, got, "B")
 	})
 	t.Run("Quorum", func(t *testing.T) {
 		got, err := r.State("S3", Quorum)
 		assert.Nil(t, err)
 		want := rState{Quorum, len(ss["S1"]), ss["S1"], ss["S2"]}
-		assert.Equal(t, want, got)
+		assertSameHosts(want, got, "A")
 		_, err = got.ConsistencyLevel(All)
 		assert.ErrorIs(t, err, errUnresolvedName)
 		_, err = got.ConsistencyLevel(Quorum)
@@ -59,7 +77,8 @@ func TestResolver(t *testing.T) {
 		got, err := r.State("S5", Quorum)
 		assert.ErrorIs(t, err, errUnresolvedName)
 		want := rState{Quorum, 0, ss["S1"], ss["S4"]}
-		assert.Equal(t, want, got)
+		assertSameHosts(want, got, "A")
+
 		_, err = got.ConsistencyLevel(All)
 		assert.ErrorIs(t, err, errUnresolvedName)
 		_, err = got.ConsistencyLevel(Quorum)

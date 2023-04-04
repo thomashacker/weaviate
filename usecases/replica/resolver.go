@@ -67,7 +67,9 @@ func (r *resolver) State(shardName string, cl ConsistencyLevel) (res rState, err
 		}
 	}
 	res.Hosts = make([]string, 0, n)
-	res.nodes = make([]string, 0, len(m)-n)
+	if cap := len(m) - n; cap > 0 {
+		res.nodes = make([]string, 0, cap)
+	}
 
 	// This node should be the first to respond in case if the shard is locally available
 	if addr := m[r.NodeName]; addr != "" {
@@ -82,9 +84,6 @@ func (r *resolver) State(shardName string, cl ConsistencyLevel) (res rState, err
 		}
 	}
 
-	if err != nil {
-		return res, err
-	}
 	if res.Len() == 0 {
 		return res, errNoReplicaFound
 	}
