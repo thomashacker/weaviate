@@ -108,10 +108,76 @@ func (f *Finder) CheckShardConsistency(ctx context.Context,
 		f.log.WithField("op", "pull.all").Error(err)
 		return nil, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
-	result := <-f.readAll(ctx, shard, ids, replyCh, state)
+	result := <-f.readBatchPart(ctx, batch.Shard, ids, replyCh, state)
 	if err = result.Err; err != nil {
 		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
 	}
 
 	return result.Value, err
+}
+
+// readBatchPart reads in replicated objects specified by their ids
+// readAll reads in replicated objects specified by their ids
+func (f *finderStream) readBatchPart(ctx context.Context,
+	shard string,
+	ids []strfmt.UUID,
+	ch <-chan _Result[batchReply], st rState,
+) <-chan batchResult {
+	resultCh := make(chan batchResult, 1)
+
+	go func() {
+		defer close(resultCh)
+		var (
+			N = len(ids) // number of requested objects
+			// votes counts number of votes per object for each node
+			votes      = make([]vote, 0, len(st.Hosts))
+			contentIdx = -1 // index of full read reply
+		)
+
+		for r := range ch { // len(ch) == st.Level
+			resp := r.Value
+			if r.Err != nil { // at least one node is not responding
+				f.log.WithField("op", "get").WithField("replica", r.Value.Sender).
+					WithField("class", f.class).WithField("shard", shard).Error(r.Err)
+				resultCh <- batchResult{nil, errRead}
+				return
+			}
+			if !resp.IsDigest {
+				contentIdx = len(votes)
+			}
+
+			votes = append(votes, vote{resp, make([]int, N), nil})
+			M := 0
+			for i := 0; i < N; i++ {
+				max := 0
+				lastTime := resp.UpdateTimeAt(i)
+
+				for j := range votes { // count votes
+					if votes[j].UpdateTimeAt(i) == lastTime {
+						votes[j].Count[i]++
+					}
+					if max < votes[j].Count[i] {
+						max = votes[j].Count[i]
+					}
+				}
+				if max >= st.Level {
+					M++
+				}
+			}
+
+			if M == N {
+				resultCh <- batchResult{fromReplicas(votes[contentIdx].FullData), nil}
+				return
+			}
+		}
+		res, err := f.repairAll(ctx, shard, ids, votes, st, contentIdx)
+		if err == nil {
+			resultCh <- batchResult{res, nil}
+		}
+		resultCh <- batchResult{nil, errRepair}
+		f.log.WithField("op", "repair_all").WithField("class", f.class).
+			WithField("shard", shard).WithField("uuids", ids).Error(err)
+	}()
+
+	return resultCh
 }
