@@ -151,7 +151,7 @@ func (c *coordinator[T]) Push(ctx context.Context,
 	ask readyOp,
 	com commitOp[T],
 ) (<-chan _Result[T], int, error) {
-	state, err := c.Resolver.State(c.Shard, cl)
+	state, err := c.Resolver.State(c.Shard, cl, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w : class %q shard %q", err, c.Class, c.Shard)
 	}
@@ -161,12 +161,14 @@ func (c *coordinator[T]) Push(ctx context.Context,
 }
 
 // Pull data from replica depending on consistency level
-// Pull involves just as many replicas to satisfy the consistency level
+// Pull involves just as many replicas to satisfy the consistency level.
+//
+// directCandidate when specified a direct request is set to this node (default to this node)
 func (c *coordinator[T]) Pull(ctx context.Context,
 	cl ConsistencyLevel,
-	op readOp[T],
+	op readOp[T], directCandidate string,
 ) (<-chan _Result[T], rState, error) {
-	state, err := c.Resolver.State(c.Shard, cl)
+	state, err := c.Resolver.State(c.Shard, cl, directCandidate)
 	if err != nil {
 		return nil, state, fmt.Errorf("%w : class %q shard %q", err, c.Class, c.Shard)
 	}
