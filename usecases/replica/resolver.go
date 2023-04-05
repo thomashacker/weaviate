@@ -52,13 +52,13 @@ type resolver struct {
 }
 
 // State returns replicas state
-func (r *resolver) State(shardName string, cl ConsistencyLevel) (res rState, err error) {
+func (r *resolver) State(shardName string, cl ConsistencyLevel, directCandidate string) (res rState, err error) {
 	res.CLevel = cl
 	m, err := r.Schema.ResolveParentNodes(r.Class, shardName)
 	if err != nil {
 		return res, err
 	}
-
+	res.NodeMap = m
 	// count number of valid addr
 	n := 0
 	for name, addr := range m {
@@ -67,20 +67,19 @@ func (r *resolver) State(shardName string, cl ConsistencyLevel) (res rState, err
 		}
 	}
 	res.Hosts = make([]string, 0, n)
-	if cap := len(m) - n; cap > 0 {
-		res.nodes = make([]string, 0, cap)
-	}
 
+	// We must hold the data if candidate is specified hence it must exist
+	// if specified the direct candidate is alway at index 0
+	if directCandidate == "" {
+		directCandidate = r.NodeName
+	}
 	// This node should be the first to respond in case if the shard is locally available
-	if addr := m[r.NodeName]; addr != "" {
+	if addr := m[directCandidate]; addr != "" {
 		res.Hosts = append(res.Hosts, addr)
-		delete(m, r.NodeName)
 	}
 	for name, addr := range m {
-		if name != "" && addr != "" {
+		if name != "" && addr != "" && name != directCandidate {
 			res.Hosts = append(res.Hosts, addr)
-		} else {
-			res.nodes = append(res.nodes, name)
 		}
 	}
 
@@ -94,23 +93,29 @@ func (r *resolver) State(shardName string, cl ConsistencyLevel) (res rState, err
 
 // rState replicas state
 type rState struct {
-	CLevel ConsistencyLevel
-	Level  int
-	Hosts  []string // successfully resolved names
-	nodes  []string // names which could not be resolved
+	CLevel  ConsistencyLevel
+	Level   int
+	Hosts   []string // successfully resolved names
+	NodeMap map[string]string
 }
 
 // Len returns the number of replicas
 func (r *rState) Len() int {
-	return len(r.Hosts) + len(r.nodes)
+	return len(r.NodeMap)
 }
 
 // ConsistencyLevel returns consistency level if it is satisfied
 func (r *rState) ConsistencyLevel(l ConsistencyLevel) (int, error) {
 	level := cLevel(l, r.Len())
 	if n := len(r.Hosts); level > n {
+		nodes := []string{}
+		for k, addr := range r.NodeMap {
+			if addr == "" {
+				nodes = append(nodes, k)
+			}
+		}
 		return 0, fmt.Errorf("consistency level (%d) > available replicas(%d): %w :%v",
-			level, n, errUnresolvedName, r.nodes)
+			level, n, errUnresolvedName, nodes)
 	}
 	return level, nil
 }
