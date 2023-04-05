@@ -156,6 +156,10 @@ func (f *Finder) CheckConsistency(ctx context.Context,
 			return fmt.Errorf("missing node or shard at index %d", i)
 		}
 	}
+	for _, x := range cluster(createBatch(xs)) {
+		// make it concurrent
+		f.CheckShardConsistency(ctx, l, x)
+	}
 	// TODO:
 	// 1. Aggregate result set by shard
 	// 2. Aggregate the result set of a shard by node (owner of objects)

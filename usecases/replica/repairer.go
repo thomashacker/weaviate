@@ -244,9 +244,9 @@ func (r *repairer) repairAll(ctx context.Context,
 				}
 				return nil
 			})
-			if err := gr.Wait(); err != nil {
-				return nil, err
-			}
+		}
+		if err := gr.Wait(); err != nil {
+			return nil, err
 		}
 	}
 
