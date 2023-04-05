@@ -148,8 +148,11 @@ func (f *Finder) CheckConsistency(ctx context.Context,
 	if len(xs) == 0 {
 		return nil
 	}
-	for i := range xs {
-		if xs[i].BelongsToNode == "" || xs[i].BelongsToShard == "" {
+	for i, x := range xs {
+		if x == nil {
+			return fmt.Errorf("contains nil at object at index %d", i)
+		}
+		if x.BelongsToNode == "" || x.BelongsToShard == "" {
 			return fmt.Errorf("missing node or shard at index %d", i)
 		}
 	}
