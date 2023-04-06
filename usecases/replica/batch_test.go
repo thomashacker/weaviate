@@ -1,6 +1,7 @@
 package replica
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"testing"
@@ -62,4 +63,48 @@ func TestBatchInput(t *testing.T) {
 	assert.ElementsMatch(t, parts[1].ObjectIDs(), []strfmt.UUID{ids[1], ids[4], ids[6], ids[7], ids[8]})
 	assert.Equal(t, parts[1].Shard, "S1")
 	assert.Equal(t, parts[1].Node, "N1")
+}
+
+func TestFinderCheckConsistencyWithConsistencyLevelALL(t *testing.T) {
+	var (
+		ids     = []strfmt.UUID{"0", "1", "2", "3", "4", "5"}
+		cls     = "C1"
+		shards  = []string{"S1"}
+		nodes   = []string{"A", "B", "C"}
+		ctx     = context.Background()
+		xs      = make([]*storobj.Object, len(ids))
+		digestR = make([]RepairResponse, len(ids))
+	)
+	for i, id := range ids {
+		xs[i] = &storobj.Object{
+			Object: models.Object{
+				ID:                 id,
+				LastUpdateTimeUnix: int64(i),
+			},
+			BelongsToShard: shards[0],
+			BelongsToNode:  "A",
+		}
+		digestR[i] = RepairResponse{ID: ids[i].String(), UpdateTime: int64(i)}
+	}
+
+	want := make([]*storobj.Object, len(ids))
+	for i, x := range xs {
+		cp := *x
+		cp.IsConsistent = true
+		want[i] = &cp
+	}
+
+	t.Run("All", func(t *testing.T) {
+		var (
+			shard  = shards[0]
+			f      = newFakeFactory("C1", shard, nodes)
+			finder = f.newFinder("A")
+		)
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, nil)
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, want, xs)
+	})
 }
