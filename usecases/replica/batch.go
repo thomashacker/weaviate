@@ -86,7 +86,7 @@ func (b *batchPart) Extract() ([]objects.Replica, []strfmt.UUID) {
 	return xs, ys
 }
 
-func (f *Finder) CheckShardConsistency(ctx context.Context,
+func (f *Finder) checkShardConsistency(ctx context.Context,
 	l ConsistencyLevel,
 	batch batchPart,
 ) ([]*storobj.Object, error) {
@@ -106,7 +106,8 @@ func (f *Finder) CheckShardConsistency(ctx context.Context,
 
 	replyCh, state, err := c.Pull(ctx, l, op, batch.Node)
 	if err != nil {
-		f.log.WithField("op", "pull.all").Error(err)
+		f.log.WithField("op", "shard_consistency.pull").
+			WithField("shard", batch.Shard).Error(err)
 		return nil, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
 	result := <-f.readBatchPart(ctx, batch, ids, replyCh, state)
@@ -138,7 +139,7 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 		for r := range ch { // len(ch) == st.Level
 			resp := r.Value
 			if r.Err != nil { // at least one node is not responding
-				f.log.WithField("op", "get").WithField("replica", r.Value.Sender).
+				f.log.WithField("op", "read_batch.get").WithField("replica", r.Value.Sender).
 					WithField("class", f.class).WithField("shard", batch.Shard).Error(r.Err)
 				resultCh <- batchResult{nil, errRead}
 				return
@@ -177,7 +178,7 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 		res, err := f.repairBatchPart(ctx, batch.Shard, ids, votes, st, contentIdx)
 		if err != nil {
 			resultCh <- batchResult{nil, errRepair}
-			f.log.WithField("op", "repair_all").WithField("class", f.class).
+			f.log.WithField("op", "repair_batch").WithField("class", f.class).
 				WithField("shard", batch.Shard).WithField("uuids", ids).Error(err)
 			return
 		}
@@ -198,7 +199,6 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 		}
 
 		resultCh <- batchResult{res, nil}
-		//}
 	}()
 
 	return resultCh
