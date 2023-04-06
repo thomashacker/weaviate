@@ -109,7 +109,7 @@ func (f *Finder) CheckShardConsistency(ctx context.Context,
 		f.log.WithField("op", "pull.all").Error(err)
 		return nil, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
 	}
-	result := <-f.readBatchPart(ctx, batch.Shard, ids, replyCh, state)
+	result := <-f.readBatchPart(ctx, batch, ids, replyCh, state)
 	if err = result.Err; err != nil {
 		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
 	}
@@ -120,7 +120,7 @@ func (f *Finder) CheckShardConsistency(ctx context.Context,
 // readBatchPart reads in replicated objects specified by their ids
 // readAll reads in replicated objects specified by their ids
 func (f *finderStream) readBatchPart(ctx context.Context,
-	shard string,
+	batch batchPart,
 	ids []strfmt.UUID,
 	ch <-chan _Result[batchReply], st rState,
 ) <-chan batchResult {
@@ -139,7 +139,7 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 			resp := r.Value
 			if r.Err != nil { // at least one node is not responding
 				f.log.WithField("op", "get").WithField("replica", r.Value.Sender).
-					WithField("class", f.class).WithField("shard", shard).Error(r.Err)
+					WithField("class", f.class).WithField("shard", batch.Shard).Error(r.Err)
 				resultCh <- batchResult{nil, errRead}
 				return
 			}
@@ -167,17 +167,38 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 			}
 
 			if M == N {
+				for _, idx := range batch.Index {
+					batch.Data[idx].IsConsistent = true
+				}
 				resultCh <- batchResult{fromReplicas(votes[contentIdx].FullData), nil}
 				return
 			}
 		}
-		res, err := f.repairBatchPart(ctx, shard, ids, votes, st, contentIdx)
-		if err == nil {
-			resultCh <- batchResult{res, nil}
+		res, err := f.repairBatchPart(ctx, batch.Shard, ids, votes, st, contentIdx)
+		if err != nil {
+			resultCh <- batchResult{nil, errRepair}
+			f.log.WithField("op", "repair_all").WithField("class", f.class).
+				WithField("shard", batch.Shard).WithField("uuids", ids).Error(err)
+			return
 		}
-		resultCh <- batchResult{nil, errRepair}
-		f.log.WithField("op", "repair_all").WithField("class", f.class).
-			WithField("shard", shard).WithField("uuids", ids).Error(err)
+		// count votes
+		maxCount := len(votes)
+		sum := votes[0].Count
+		nc := 0
+		for _, vote := range votes[1:] {
+			for i, n := range vote.Count {
+				sum[i] += n
+			}
+		}
+		for i, n := range sum {
+			if n == maxCount {
+				batch.Data[batch.Index[i]].IsConsistent = true
+				nc++
+			}
+		}
+
+		resultCh <- batchResult{res, nil}
+		//}
 	}()
 
 	return resultCh
@@ -269,9 +290,10 @@ func (r *repairer) repairBatchPart(ctx context.Context,
 				}
 				return nil
 			})
-			if err := gr.Wait(); err != nil {
-				return nil, err
-			}
+
+		}
+		if err := gr.Wait(); err != nil {
+			return nil, err
 		}
 	}
 
