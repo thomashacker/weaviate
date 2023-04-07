@@ -673,7 +673,6 @@ func TestReplicatorAddReferences(t *testing.T) {
 
 type fakeFactory struct {
 	CLS            string
-	Shard          string
 	Nodes          []string
 	Shard2replicas map[string][]string
 	WClient        *fakeClient
@@ -687,7 +686,6 @@ func newFakeFactory(class, shard string, nodes []string) *fakeFactory {
 
 	return &fakeFactory{
 		CLS:            class,
-		Shard:          shard,
 		Nodes:          nodes,
 		Shard2replicas: map[string][]string{shard: nodes},
 		WClient:        &fakeClient{},
@@ -695,6 +693,10 @@ func newFakeFactory(class, shard string, nodes []string) *fakeFactory {
 		log:            logger,
 		hook:           hook,
 	}
+}
+
+func (f fakeFactory) AddShard(shard string, nodes []string) {
+	f.Shard2replicas[shard] = nodes
 }
 
 func (f fakeFactory) newReplicator() *Replicator {

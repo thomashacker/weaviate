@@ -65,7 +65,7 @@ func TestBatchInput(t *testing.T) {
 	assert.Equal(t, parts[1].Node, "N1")
 }
 
-func TestFinderCheckConsistencyWithConsistencyLevelALL(t *testing.T) {
+func TestFinderCheckConsistencyALLForOneShard(t *testing.T) {
 	var (
 		ids    = []strfmt.UUID{"0", "1", "2", "3", "4", "5"}
 		cls    = "C1"
@@ -76,51 +76,12 @@ func TestFinderCheckConsistencyWithConsistencyLevelALL(t *testing.T) {
 		// digestR = make([]RepairResponse, len(ids))
 	)
 
-	gen := func(ids []strfmt.UUID) ([]*storobj.Object, []RepairResponse) {
-		xs := make([]*storobj.Object, len(ids))
-		digestR := make([]RepairResponse, len(ids))
-		for i, id := range ids {
-			xs[i] = &storobj.Object{
-				Object: models.Object{
-					ID:                 id,
-					LastUpdateTimeUnix: int64(i),
-				},
-				BelongsToShard: shards[0],
-				BelongsToNode:  "A",
-			}
-			digestR[i] = RepairResponse{ID: ids[i].String(), UpdateTime: int64(i)}
-		}
-		return xs, digestR
-	}
-
-	t.Run("All", func(t *testing.T) {
+	t.Run("ExceptOne", func(t *testing.T) {
 		var (
 			shard       = shards[0]
 			f           = newFakeFactory("C1", shard, nodes)
 			finder      = f.newFinder("A")
-			xs, digestR = gen(ids)
-		)
-		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR, nil)
-		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, nil)
-
-		want := make([]*storobj.Object, len(ids))
-		for i, x := range xs {
-			cp := *x
-			cp.IsConsistent = true
-			want[i] = &cp
-		}
-
-		err := finder.CheckConsistency(ctx, All, xs)
-		assert.Nil(t, err)
-		assert.ElementsMatch(t, want, xs)
-	})
-
-	t.Run("AllButOne", func(t *testing.T) {
-		var (
-			shard       = shards[0]
-			f           = newFakeFactory("C1", shard, nodes)
-			finder      = f.newFinder("A")
-			xs, digestR = gen(ids)
+			xs, digestR = genInputs("A", shard, ids)
 		)
 		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR, nil)
 		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, errAny)
@@ -138,4 +99,88 @@ func TestFinderCheckConsistencyWithConsistencyLevelALL(t *testing.T) {
 		// f.assertLogContains(t, "replica", nodes[2])
 		f.assertLogErrorContains(t, errRead.Error())
 	})
+
+	t.Run("Success", func(t *testing.T) {
+		var (
+			shard       = shards[0]
+			f           = newFakeFactory("C1", shard, nodes)
+			finder      = f.newFinder("A")
+			xs, digestR = genInputs("A", shard, ids)
+		)
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, nil)
+
+		want := make([]*storobj.Object, len(ids))
+		for i, x := range xs {
+			cp := *x
+			cp.IsConsistent = true
+			want[i] = &cp
+		}
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, want, xs)
+	})
+}
+
+func TestFinderCheckConsistencyALLForTwoShard(t *testing.T) {
+	var (
+		ids    = []strfmt.UUID{"0", "1", "2", "3", "4", "5"}
+		cls    = "C1"
+		shards = []string{"S1", "S2"}
+		nodes  = []string{"A", "B", "C"}
+		ctx    = context.Background()
+	)
+
+	t.Run("Success", func(t *testing.T) {
+		var (
+			f             = newFakeFactory("C1", shards[0], nodes)
+			finder        = f.newFinder("A")
+			idSet1        = ids[:3]
+			idSet2        = ids[3:6]
+			xs1, digestR1 = genInputs("A", shards[0], idSet1)
+			xs2, digestR2 = genInputs("B", shards[1], idSet2)
+		)
+		xs := make([]*storobj.Object, 0, len(xs1)+len(xs2))
+		for i := 0; i < 3; i++ {
+			xs = append(xs, xs1[i])
+			xs = append(xs, xs2[i])
+		}
+		// first shard
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shards[0], idSet1).Return(digestR1, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[0], idSet1).Return(digestR1, nil)
+
+		// second shard
+		f.AddShard(shards[1], nodes)
+		f.RClient.On("DigestObjects", anyVal, nodes[0], cls, shards[1], idSet2).Return(digestR2, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[1], idSet2).Return(digestR2, nil)
+
+		want := make([]*storobj.Object, len(ids))
+		for i, x := range xs {
+			cp := *x
+			cp.IsConsistent = true
+			want[i] = &cp
+		}
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, want, xs)
+	})
+}
+
+func genInputs(node, shard string, ids []strfmt.UUID) ([]*storobj.Object, []RepairResponse) {
+	xs := make([]*storobj.Object, len(ids))
+	digestR := make([]RepairResponse, len(ids))
+	for i, id := range ids {
+		xs[i] = &storobj.Object{
+			Object: models.Object{
+				ID:                 id,
+				LastUpdateTimeUnix: int64(i),
+			},
+			BelongsToShard: shard,
+			BelongsToNode:  node,
+		}
+		digestR[i] = RepairResponse{ID: ids[i].String(), UpdateTime: int64(i)}
+	}
+	return xs, digestR
 }
