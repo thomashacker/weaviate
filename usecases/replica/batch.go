@@ -106,16 +106,10 @@ func (f *Finder) checkShardConsistency(ctx context.Context,
 
 	replyCh, state, err := c.Pull(ctx, l, op, batch.Node)
 	if err != nil {
-		f.log.WithField("op", "shard_consistency.pull").
-			WithField("shard", batch.Shard).Error(err)
-		return nil, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
+		return nil, fmt.Errorf("pull shard: %w", errReplicas)
 	}
 	result := <-f.readBatchPart(ctx, batch, ids, replyCh, state)
-	if err = result.Err; err != nil {
-		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
-	}
-
-	return result.Value, err
+	return result.Value, result.Err
 }
 
 // readBatchPart reads in replicated objects specified by their ids

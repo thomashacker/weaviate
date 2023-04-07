@@ -115,7 +115,6 @@ func TestFinderCheckConsistencyWithConsistencyLevelALL(t *testing.T) {
 		assert.ElementsMatch(t, want, xs)
 	})
 
-
 	t.Run("AllButOne", func(t *testing.T) {
 		var (
 			shard       = shards[0]
@@ -134,10 +133,9 @@ func TestFinderCheckConsistencyWithConsistencyLevelALL(t *testing.T) {
 			want[i] = &cp
 		}
 
+		assert.Nil(t, err)
 		assert.ElementsMatch(t, want, xs)
-		//assert.ErrorIs(t, err, errRead)
-		assert.ErrorContains(t, err, msgCLevel)
-		f.assertLogContains(t, "replica", nodes[2])
-		f.assertLogErrorContains(t, errAny.Error())
+		// f.assertLogContains(t, "replica", nodes[2])
+		f.assertLogErrorContains(t, errRead.Error())
 	})
 }

@@ -144,7 +144,7 @@ type ShardDesc struct {
 
 func (f *Finder) CheckConsistency(ctx context.Context,
 	l ConsistencyLevel, xs []*storobj.Object,
-) error {
+) (retErr error) {
 	if len(xs) == 0 {
 		return nil
 	}
@@ -156,10 +156,15 @@ func (f *Finder) CheckConsistency(ctx context.Context,
 			return fmt.Errorf("missing node or shard at index %d", i)
 		}
 	}
+
 	for _, x := range cluster(createBatch(xs)) {
 		// make it concurrent
-		f.CheckShardConsistency(ctx, l, x)
+		if _, err := f.checkShardConsistency(ctx, l, x); err != nil {
+			f.log.WithField("op", "check_shard_consistency").
+				WithField("shard", x.Shard).Error(err)
+		}
 	}
+
 	// TODO:
 	// 1. Aggregate result set by shard
 	// 2. Aggregate the result set of a shard by node (owner of objects)
