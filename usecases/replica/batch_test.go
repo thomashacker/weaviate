@@ -168,6 +168,112 @@ func TestFinderCheckConsistencyALLForTwoShard(t *testing.T) {
 	})
 }
 
+func TestFinderCheckConsistencyALLForThreeShard(t *testing.T) {
+	var (
+		ids    = []strfmt.UUID{"0", "1", "2", "3", "4", "5"}
+		cls    = "C1"
+		shards = []string{"S1", "S2", "S3"}
+		nodes  = []string{"A", "B", "C"}
+		ctx    = context.Background()
+	)
+
+	t.Run("Success", func(t *testing.T) {
+		var (
+			f             = newFakeFactory("C1", shards[0], nodes)
+			finder        = f.newFinder("A")
+			ids1          = ids[:2]
+			ids2          = ids[2:4]
+			ids3          = ids[4:]
+			xs1, digestR1 = genInputs("A", shards[0], ids1)
+			xs2, digestR2 = genInputs("B", shards[1], ids2)
+			xs3, digestR3 = genInputs("C", shards[2], ids3)
+		)
+		xs := make([]*storobj.Object, 0, len(xs1)+len(xs2))
+		for i := 0; i < 2; i++ {
+			xs = append(xs, xs1[i])
+			xs = append(xs, xs2[i])
+			xs = append(xs, xs3[i])
+		}
+		// first shard
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shards[0], ids1).Return(digestR1, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[0], ids1).Return(digestR1, nil)
+
+		// second shard
+		f.AddShard(shards[1], nodes)
+		f.RClient.On("DigestObjects", anyVal, nodes[0], cls, shards[1], ids2).Return(digestR2, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[1], ids2).Return(digestR2, nil)
+
+		// third shard
+		f.AddShard(shards[2], nodes)
+		f.RClient.On("DigestObjects", anyVal, nodes[0], cls, shards[2], ids3).Return(digestR3, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shards[2], ids3).Return(digestR3, nil)
+
+		want := make([]*storobj.Object, len(ids))
+		for i, x := range xs {
+			cp := *x
+			cp.IsConsistent = true
+			want[i] = &cp
+		}
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, want, xs)
+	})
+}
+
+func TestFinderCheckConsistencyALLForTwoShardSingleNode(t *testing.T) {
+	var (
+		ids    = []strfmt.UUID{"0", "1", "2", "3", "4", "5"}
+		cls    = "C1"
+		shards = []string{"S1", "S2", "S3"}
+		nodes  = []string{"A", "B", "C"}
+		ctx    = context.Background()
+	)
+
+	t.Run("Success", func(t *testing.T) {
+		var (
+			f             = newFakeFactory("C1", shards[0], nodes)
+			finder        = f.newFinder("A")
+			ids1          = ids[:2]
+			ids2          = ids[2:4]
+			ids3          = ids[4:]
+			xs1, digestR1 = genInputs("A", shards[0], ids1)
+			xs2, digestR2 = genInputs("B", shards[1], ids2)
+			xs3, digestR3 = genInputs("A", shards[2], ids3)
+		)
+		xs := make([]*storobj.Object, 0, len(xs1)+len(xs2))
+		for i := 0; i < 2; i++ {
+			xs = append(xs, xs1[i])
+			xs = append(xs, xs2[i])
+			xs = append(xs, xs3[i])
+		}
+		// first shard
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shards[0], ids1).Return(digestR1, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[0], ids1).Return(digestR1, nil)
+
+		// second shard
+		f.AddShard(shards[1], nodes)
+		f.RClient.On("DigestObjects", anyVal, nodes[0], cls, shards[1], ids2).Return(digestR2, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[1], ids2).Return(digestR2, nil)
+
+		// third shard
+		f.AddShard(shards[2], nodes)
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shards[2], ids3).Return(digestR3, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[2], ids3).Return(digestR3, nil)
+
+		want := make([]*storobj.Object, len(ids))
+		for i, x := range xs {
+			cp := *x
+			cp.IsConsistent = true
+			want[i] = &cp
+		}
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, want, xs)
+	})
+}
+
 func genInputs(node, shard string, ids []strfmt.UUID) ([]*storobj.Object, []RepairResponse) {
 	xs := make([]*storobj.Object, len(ids))
 	digestR := make([]RepairResponse, len(ids))
