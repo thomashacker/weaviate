@@ -177,7 +177,7 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 			return
 		}
 		// count votes
-		maxCount := len(votes)
+		maxCount := len(votes) * len(votes)
 		sum := votes[0].Count
 		nc := 0
 		for _, vote := range votes[1:] {
