@@ -246,12 +246,11 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 
 func TestRepairerCheckConsistencyAll(t *testing.T) {
 	var (
-		ids        = []strfmt.UUID{"01", "02", "03"}
-		cls        = "C1"
-		shard      = "S1"
-		nodes      = []string{"A", "B", "C"}
-		ctx        = context.Background()
-		nilObjects = []*storobj.Object(nil)
+		ids   = []strfmt.UUID{"01", "02", "03"}
+		cls   = "C1"
+		shard = "S1"
+		nodes = []string{"A", "B", "C"}
+		ctx   = context.Background()
 	)
 	t.Run("DirectRead", func(t *testing.T) {
 		var (
@@ -325,11 +324,11 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 			finder = f.newFinder("A")
 			ids    = []strfmt.UUID{"1", "2", "3", "4", "5"}
 			result = []*storobj.Object{
-				objectEx(ids[0], 2, "", ""),
-				objectEx(ids[1], 2, "", ""),
-				objectEx(ids[2], 3, "", ""),
-				objectEx(ids[3], 4, "", ""),
-				objectEx(ids[4], 3, "", ""),
+				objectEx(ids[0], 2, shard, "A"),
+				objectEx(ids[1], 2, shard, "A"),
+				objectEx(ids[2], 3, shard, "A"),
+				objectEx(ids[3], 4, shard, "A"),
+				objectEx(ids[4], 3, shard, "A"),
 			}
 			xs = []*storobj.Object{
 				objectEx(ids[0], 1, shard, "A"),
@@ -362,7 +361,6 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 			}
 			want = setObjectsConsistency(result, true)
 		)
-		// f.RClient.On("FetchObjects", anyVal, nodes[0], cls, shard, ids).Return(xs, nil)
 		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR2, nil)
 		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR3, nil)
 
@@ -472,10 +470,77 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 
 		err := finder.CheckConsistency(ctx, All, xs)
 		assert.Nil(t, err)
-		for i := range xs {
-			xs[i].BelongsToShard = ""
-			xs[i].BelongsToNode = ""
+		assert.Equal(t, want, xs)
+	})
+
+	t.Run("ChangedObject", func(t *testing.T) {
+		var (
+			f      = newFakeFactory("C1", shard, nodes)
+			finder = f.newFinder("A")
+			xs     = []*storobj.Object{
+				objectEx(ids[0], 4, shard, "A"),
+				objectEx(ids[1], 5, shard, "A"),
+				objectEx(ids[2], 6, shard, "A"),
+			}
+			digestR2 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 4},
+				{ID: ids[1].String(), UpdateTime: 2},
+				{ID: ids[2].String(), UpdateTime: 3},
+			}
+			digestR3 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[1].String(), UpdateTime: 5},
+				{ID: ids[2].String(), UpdateTime: 3},
+			}
+			digestR4 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 4},
+				{ID: ids[1].String(), UpdateTime: 2},
+				{ID: ids[2].String(), UpdateTime: 1, Err: "conflict"}, // this one
+			}
+		)
+		want := setObjectsConsistency(xs, true)
+		want[2].IsConsistent = false
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR2, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR3, nil)
+
+		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, anyVal).
+			Return(digestR4, nil).
+			Once().
+			RunFn = func(a mock.Arguments) {
+			got := a[4].([]*objects.VObject)
+			want := []*objects.VObject{
+				{
+					LatestObject:    &xs[1].Object,
+					StaleUpdateTime: 2,
+				},
+				{
+					LatestObject:    &xs[2].Object,
+					StaleUpdateTime: 3,
+				},
+			}
+
+			assert.ElementsMatch(t, want, got)
 		}
+		f.RClient.On("OverwriteObjects", anyVal, nodes[2], cls, shard, anyVal).
+			Return(digestR2, nil).
+			Once().
+			RunFn = func(a mock.Arguments) {
+			got := a[4].([]*objects.VObject)
+			want := []*objects.VObject{
+				{
+					LatestObject:    &xs[0].Object,
+					StaleUpdateTime: 1,
+				},
+				{
+					LatestObject:    &xs[2].Object,
+					StaleUpdateTime: 3,
+				},
+			}
+			assert.ElementsMatch(t, want, got)
+		}
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
 		assert.Equal(t, want, xs)
 	})
 }

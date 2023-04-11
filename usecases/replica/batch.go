@@ -187,8 +187,11 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 		}
 		for i, n := range sum {
 			if n == maxCount {
-				res[i].IsConsistent = true
+				prev := batch.Data[batch.Index[i]]
+				res[i].BelongsToShard = prev.BelongsToShard
+				res[i].BelongsToNode = prev.BelongsToNode
 				batch.Data[batch.Index[i]] = res[i]
+				res[i].IsConsistent = true
 				nc++
 			}
 		}
