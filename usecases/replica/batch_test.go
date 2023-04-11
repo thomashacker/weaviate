@@ -246,11 +246,12 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 
 func TestRepairerCheckConsistencyAll(t *testing.T) {
 	var (
-		ids   = []strfmt.UUID{"01", "02", "03"}
-		cls   = "C1"
-		shard = "S1"
-		nodes = []string{"A", "B", "C"}
-		ctx   = context.Background()
+		ids        = []strfmt.UUID{"01", "02", "03"}
+		cls        = "C1"
+		shard      = "S1"
+		nodes      = []string{"A", "B", "C"}
+		ctx        = context.Background()
+		nilObjects = []*storobj.Object(nil)
 	)
 	t.Run("DirectRead", func(t *testing.T) {
 		var (
@@ -316,6 +317,166 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		err := finder.CheckConsistency(ctx, All, directR)
 		assert.Nil(t, err)
 		assert.Equal(t, want, directR)
+	})
+
+	t.Run("DigestRead5", func(t *testing.T) {
+		var (
+			f      = newFakeFactory(cls, shard, nodes)
+			finder = f.newFinder("A")
+			ids    = []strfmt.UUID{"1", "2", "3", "4", "5"}
+			result = []*storobj.Object{
+				objectEx(ids[0], 2, "", ""),
+				objectEx(ids[1], 2, "", ""),
+				objectEx(ids[2], 3, "", ""),
+				objectEx(ids[3], 4, "", ""),
+				objectEx(ids[4], 3, "", ""),
+			}
+			xs = []*storobj.Object{
+				objectEx(ids[0], 1, shard, "A"),
+				objectEx(ids[1], 1, shard, "A"),
+				objectEx(ids[2], 2, shard, "A"),
+				objectEx(ids[3], 4, shard, "A"), // latest
+				objectEx(ids[4], 2, shard, "A"),
+			}
+			digestR2 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 2}, // latest
+				{ID: ids[1].String(), UpdateTime: 2}, // latest
+				{ID: ids[2].String(), UpdateTime: 1},
+				{ID: ids[3].String(), UpdateTime: 1},
+				{ID: ids[4].String(), UpdateTime: 1},
+			}
+			digestR3 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[1].String(), UpdateTime: 1},
+				{ID: ids[2].String(), UpdateTime: 3}, // latest
+				{ID: ids[3].String(), UpdateTime: 1},
+				{ID: ids[4].String(), UpdateTime: 3}, // latest
+			}
+			directR2 = []objects.Replica{
+				replica(ids[0], 2, false),
+				replica(ids[1], 2, false),
+			}
+			directR3 = []objects.Replica{
+				replica(ids[2], 3, false),
+				replica(ids[4], 3, false),
+			}
+			want = setObjectsConsistency(result, true)
+		)
+		// f.RClient.On("FetchObjects", anyVal, nodes[0], cls, shard, ids).Return(xs, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR2, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR3, nil)
+
+		// fetch most recent objects
+		f.RClient.On("FetchObjects", anyVal, nodes[1], cls, shard, anyVal).Return(directR2, nil).
+			Once().
+			RunFn = func(a mock.Arguments) {
+			got := a[4].([]strfmt.UUID)
+			assert.ElementsMatch(t, ids[:2], got)
+		}
+		f.RClient.On("FetchObjects", anyVal, nodes[2], cls, shard, anyVal).Return(directR3, nil).
+			Once().
+			RunFn = func(a mock.Arguments) {
+			got := a[4].([]strfmt.UUID)
+			assert.ElementsMatch(t, []strfmt.UUID{ids[2], ids[4]}, got)
+		}
+
+		// repair
+		var (
+			overwriteR1 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[1].String(), UpdateTime: 1},
+				{ID: ids[2].String(), UpdateTime: 2},
+				{ID: ids[4].String(), UpdateTime: 2},
+			}
+			overwriteR2 = []RepairResponse{
+				{ID: ids[2].String(), UpdateTime: 1},
+				{ID: ids[3].String(), UpdateTime: 1},
+				{ID: ids[4].String(), UpdateTime: 1},
+			}
+			overwriteR3 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[1].String(), UpdateTime: 1},
+				{ID: ids[3].String(), UpdateTime: 1},
+			}
+		)
+		f.RClient.On("OverwriteObjects", anyVal, nodes[0], cls, shard, anyVal).
+			Return(overwriteR1, nil).
+			Once().
+			RunFn = func(a mock.Arguments) {
+			got := a[4].([]*objects.VObject)
+			want := []*objects.VObject{
+				{
+					LatestObject:    &result[0].Object,
+					StaleUpdateTime: 1,
+				},
+				{
+					LatestObject:    &result[1].Object,
+					StaleUpdateTime: 1,
+				},
+				{
+					LatestObject:    &result[2].Object,
+					StaleUpdateTime: 2,
+				},
+				{
+					LatestObject:    &result[4].Object,
+					StaleUpdateTime: 2,
+				},
+			}
+
+			assert.ElementsMatch(t, want, got)
+		}
+
+		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, anyVal).
+			Return(overwriteR2, nil).
+			Once().
+			RunFn = func(a mock.Arguments) {
+			got := a[4].([]*objects.VObject)
+			want := []*objects.VObject{
+				{
+					LatestObject:    &result[2].Object,
+					StaleUpdateTime: 1,
+				},
+				{
+					LatestObject:    &result[3].Object,
+					StaleUpdateTime: 1,
+				},
+				{
+					LatestObject:    &result[4].Object,
+					StaleUpdateTime: 1,
+				},
+			}
+
+			assert.ElementsMatch(t, want, got)
+		}
+		f.RClient.On("OverwriteObjects", anyVal, nodes[2], cls, shard, anyVal).
+			Return(overwriteR3, nil).
+			Once().
+			RunFn = func(a mock.Arguments) {
+			got := a[4].([]*objects.VObject)
+			want := []*objects.VObject{
+				{
+					LatestObject:    &result[0].Object,
+					StaleUpdateTime: 1,
+				},
+				{
+					LatestObject:    &result[1].Object,
+					StaleUpdateTime: 1,
+				},
+				{
+					LatestObject:    &result[3].Object,
+					StaleUpdateTime: 1,
+				},
+			}
+			assert.ElementsMatch(t, want, got)
+		}
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
+		for i := range xs {
+			xs[i].BelongsToShard = ""
+			xs[i].BelongsToNode = ""
+		}
+		assert.Equal(t, want, xs)
 	})
 }
 
