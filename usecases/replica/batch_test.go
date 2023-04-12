@@ -624,6 +624,81 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, want, xs)
 	})
+
+	t.Run("FetchMostRecentObjectsError", func(t *testing.T) {
+		var (
+			f      = newFakeFactory("C1", shard, nodes)
+			finder = f.newFinder("A")
+			ids    = []strfmt.UUID{"1", "2", "3"}
+			xs     = []*storobj.Object{
+				objectEx(ids[0], 2, shard, "A"),
+				objectEx(ids[1], 3, shard, "A"),
+				objectEx(ids[2], 1, shard, "A"),
+			}
+
+			digestR2 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 2},
+				{ID: ids[1].String(), UpdateTime: 3}, // latest
+				{ID: ids[2].String(), UpdateTime: 1},
+			}
+			digestR3 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 2},
+				{ID: ids[1].String(), UpdateTime: 3},
+				{ID: ids[2].String(), UpdateTime: 4}, // latest
+			}
+			directR2 = []objects.Replica{
+				replica(ids[1], 3, false),
+			}
+			directR3 = []objects.Replica{
+				replica(ids[2], 4, false),
+			}
+		)
+
+		want := setObjectsConsistency(xs, true)
+		want[2].IsConsistent = false
+
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).
+			Return(digestR2, nil).
+			Once()
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).
+			Return(digestR3, nil).
+			Once()
+
+		// fetch most recent objects
+		f.RClient.On("FetchObjects", anyVal, nodes[1], cls, shard, anyVal).
+			Return(directR2, nil).
+			Once()
+		f.RClient.On("FetchObjects", anyVal, nodes[2], cls, shard, anyVal).
+			Return(directR3, errAny).
+			Once()
+		// repair
+		var (
+			repairR1 = []RepairResponse{
+				{ID: ids[1].String(), UpdateTime: 1},
+				{ID: ids[2].String(), UpdateTime: 1},
+			}
+
+			repairR2 = []RepairResponse(nil)
+			repairR3 = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[1].String(), UpdateTime: 1},
+			}
+		)
+		f.RClient.On("OverwriteObjects", anyVal, nodes[0], cls, shard, anyVal).
+			Return(repairR1, nil).
+			Once()
+
+		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, anyVal).
+			Return(repairR2, nil).
+			Once()
+		f.RClient.On("OverwriteObjects", anyVal, nodes[2], cls, shard, anyVal).
+			Return(repairR3, nil).
+			Once()
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		assert.Nil(t, err)
+		assert.Equal(t, want, xs)
+	})
 }
 
 func genInputs(node, shard string, updateTime int64, ids []strfmt.UUID) ([]*storobj.Object, []RepairResponse) {

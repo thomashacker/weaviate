@@ -275,12 +275,9 @@ func (r *repairer) repairBatchPart(ctx context.Context,
 			start := start
 			gr.Go(func() error {
 				resp, err := cl.FullReads(ctx, receiver, r.class, shard, query)
-				if err != nil {
-					return err
-				}
 				for i, n := 0, len(query); i < n; i++ {
 					idx := ms[start-n+i].O
-					if lastTimes[idx].T != resp[i].UpdateTime() {
+					if err != nil || lastTimes[idx].T != resp[i].UpdateTime() {
 						votes[rid].Count[idx]--
 					} else {
 						result[idx] = resp[i].Object
@@ -302,7 +299,8 @@ func (r *repairer) repairBatchPart(ctx context.Context,
 		query := make([]*objects.VObject, 0, len(ids)/2)
 		m := make(map[string]int, len(ids)/2) //
 		for j, x := range lastTimes {
-			if cTime := vote.UpdateTimeAt(j); x.T != cTime && !x.Deleted && vote.Count[j] == nVotes {
+			cTime := vote.UpdateTimeAt(j)
+			if x.T != cTime && !x.Deleted && result[j] != nil && vote.Count[j] == nVotes {
 				query = append(query, &objects.VObject{LatestObject: &result[j].Object, StaleUpdateTime: cTime})
 				m[string(result[j].ID())] = j
 			}
