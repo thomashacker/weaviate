@@ -87,16 +87,9 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, errAny)
 
 		err := finder.CheckConsistency(ctx, All, xs)
-		want := make([]*storobj.Object, len(ids))
-		for i, x := range xs {
-			cp := *x
-			cp.IsConsistent = false
-			want[i] = &cp
-		}
-
+		want := setObjectsConsistency(xs, false)
 		assert.Nil(t, err)
 		assert.ElementsMatch(t, want, xs)
-		// f.assertLogContains(t, "replica", nodes[2])
 		f.assertLogErrorContains(t, errRead.Error())
 	})
 
@@ -110,13 +103,7 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR, nil)
 		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, nil)
 
-		want := make([]*storobj.Object, len(ids))
-		for i, x := range xs {
-			cp := *x
-			cp.IsConsistent = true
-			want[i] = &cp
-		}
-
+		want := setObjectsConsistency(xs, true)
 		err := finder.CheckConsistency(ctx, All, xs)
 		assert.Nil(t, err)
 		assert.ElementsMatch(t, want, xs)
@@ -145,13 +132,7 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 		f.RClient.On("DigestObjects", anyVal, nodes[0], cls, shards[1], idSet2).Return(digestR2, nil)
 		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[1], idSet2).Return(digestR2, nil)
 
-		want := make([]*storobj.Object, len(ids))
-		for i, x := range xs {
-			cp := *x
-			cp.IsConsistent = true
-			want[i] = &cp
-		}
-
+		want := setObjectsConsistency(xs, true)
 		err := finder.CheckConsistency(ctx, All, xs)
 		assert.Nil(t, err)
 		assert.ElementsMatch(t, want, xs)
@@ -188,13 +169,7 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 		f.RClient.On("DigestObjects", anyVal, nodes[0], cls, shards[2], ids3).Return(digestR3, nil)
 		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shards[2], ids3).Return(digestR3, nil)
 
-		want := make([]*storobj.Object, len(ids))
-		for i, x := range xs {
-			cp := *x
-			cp.IsConsistent = true
-			want[i] = &cp
-		}
-
+		want := setObjectsConsistency(xs, true)
 		err := finder.CheckConsistency(ctx, All, xs)
 		assert.Nil(t, err)
 		assert.ElementsMatch(t, want, xs)
@@ -231,16 +206,45 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shards[2], ids3).Return(digestR3, nil)
 		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shards[2], ids3).Return(digestR3, nil)
 
-		want := make([]*storobj.Object, len(ids))
-		for i, x := range xs {
-			cp := *x
-			cp.IsConsistent = true
-			want[i] = &cp
-		}
-
+		want := setObjectsConsistency(xs, true)
 		err := finder.CheckConsistency(ctx, All, xs)
 		assert.Nil(t, err)
 		assert.ElementsMatch(t, want, xs)
+	})
+}
+
+func TestFinderCheckConsistencyQuorum(t *testing.T) {
+	var (
+		ids   = []strfmt.UUID{"10", "20", "30"}
+		cls   = "C1"
+		shard = "SH1"
+		nodes = []string{"A", "B", "C"}
+		ctx   = context.Background()
+	)
+
+	t.Run("ExceptOne", func(t *testing.T) {
+		var (
+			f      = newFakeFactory("C1", shard, nodes)
+			finder = f.newFinder("A")
+			xs     = []*storobj.Object{
+				objectEx(ids[0], 1, shard, "A"),
+				objectEx(ids[1], 2, shard, "A"),
+				objectEx(ids[2], 3, shard, "A"),
+			}
+			digestR = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[1].String(), UpdateTime: 2},
+				{ID: ids[2].String(), UpdateTime: 3},
+			}
+		)
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR, errAny)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, errAny)
+
+		err := finder.CheckConsistency(ctx, All, xs)
+		want := setObjectsConsistency(xs, false)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, want, xs)
+		f.assertLogErrorContains(t, errRead.Error())
 	})
 }
 
@@ -252,7 +256,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		nodes = []string{"A", "B", "C"}
 		ctx   = context.Background()
 	)
-	t.Run("DirectRead", func(t *testing.T) {
+	t.Run("DirectRead3", func(t *testing.T) {
 		var (
 			f       = newFakeFactory("C1", shard, nodes)
 			finder  = f.newFinder("A")
