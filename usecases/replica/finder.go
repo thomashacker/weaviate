@@ -145,7 +145,10 @@ type ShardDesc struct {
 func (f *Finder) CheckConsistency(ctx context.Context,
 	l ConsistencyLevel, xs []*storobj.Object,
 ) (retErr error) {
-	if len(xs) == 0 {
+	if l == One || len(xs) == 0 {
+		for i := range xs {
+			xs[i].IsConsistent = true
+		}
 		return nil
 	}
 	for i, x := range xs {
