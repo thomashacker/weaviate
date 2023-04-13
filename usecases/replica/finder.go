@@ -114,13 +114,16 @@ type ShardDesc struct {
 	Node string
 }
 
+// CheckConsistency for objects belonging to different physical shards.
+//
+// For each x in xs the fields BelongsToNode and BelongsToShard must be set non empty
 func (f *Finder) CheckConsistency(ctx context.Context,
 	l ConsistencyLevel, xs []*storobj.Object,
 ) (retErr error) {
 	if len(xs) == 0 {
 		return nil
 	}
-	for i, x := range xs {
+	for i, x := range xs { // check shard and node name are set
 		if x == nil {
 			return fmt.Errorf("contains nil at object at index %d", i)
 		}
@@ -128,21 +131,22 @@ func (f *Finder) CheckConsistency(ctx context.Context,
 			return fmt.Errorf("missing node or shard at index %d", i)
 		}
 	}
-	if l == One {
+
+	if l == One { // already consistent
 		for i := range xs {
 			xs[i].IsConsistent = true
 		}
 		return nil
 	}
-
+	// check shard consistency concurrently
 	gr, ctx := errgroup.WithContext(ctx)
-	for _, x := range cluster(createBatch(xs)) {
-		x := x
+	for _, part := range cluster(createBatch(xs)) {
+		part := part
 		gr.Go(func() error {
-			_, err := f.checkShardConsistency(ctx, l, x)
+			_, err := f.checkShardConsistency(ctx, l, part)
 			if err != nil {
 				f.log.WithField("op", "check_shard_consistency").
-					WithField("shard", x.Shard).Error(err)
+					WithField("shard", part.Shard).Error(err)
 			}
 			return err
 		})

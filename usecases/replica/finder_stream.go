@@ -54,7 +54,7 @@ func (f *finderStream) readOne(ctx context.Context,
 	go func() {
 		defer close(resultCh)
 		var (
-			votes      = make([]objTuple, 0, len(st.Hosts))
+			votes      = make([]objTuple, 0, st.Level)
 			maxCount   = 0
 			contentIdx = -1
 		)
@@ -131,7 +131,7 @@ func (f *finderStream) readExistence(ctx context.Context,
 	go func() {
 		defer close(resultCh)
 		var (
-			votes    = make([]boolTuple, 0, len(st.Hosts)) // number of votes per replica
+			votes    = make([]boolTuple, 0, st.Level) // number of votes per replica
 			maxCount = 0
 		)
 
@@ -183,7 +183,7 @@ func (f *finderStream) readExistence(ctx context.Context,
 }
 
 // readBatchPart reads in replicated objects specified by their ids
-// It checks objects for consistency and sets
+// It checks each object x for consistency and sets x.IsConsistent
 func (f *finderStream) readBatchPart(ctx context.Context,
 	batch shardPart,
 	ids []strfmt.UUID,
@@ -196,7 +196,7 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 		var (
 			N = len(ids) // number of requested objects
 			// votes counts number of votes per object for each node
-			votes      = make([]vote, 0, len(st.Hosts))
+			votes      = make([]vote, 0, st.Level)
 			contentIdx = -1 // index of full read reply
 		)
 
