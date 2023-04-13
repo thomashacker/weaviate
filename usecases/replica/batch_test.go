@@ -246,6 +246,30 @@ func TestFinderCheckConsistencyQuorum(t *testing.T) {
 		assert.ElementsMatch(t, want, xs)
 		f.assertLogErrorContains(t, errRead.Error())
 	})
+
+	t.Run("Success", func(t *testing.T) {
+		var (
+			f      = newFakeFactory("C1", shard, nodes)
+			finder = f.newFinder("A")
+			xs     = []*storobj.Object{
+				objectEx(ids[0], 1, shard, "A"),
+				objectEx(ids[1], 2, shard, "A"),
+				objectEx(ids[2], 3, shard, "A"),
+			}
+			digestR = []RepairResponse{
+				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[1].String(), UpdateTime: 2},
+				{ID: ids[2].String(), UpdateTime: 3},
+			}
+			want = setObjectsConsistency(xs, true)
+		)
+		f.RClient.On("DigestObjects", anyVal, nodes[1], cls, shard, ids).Return(digestR, nil)
+		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR, errAny)
+
+		err := finder.CheckConsistency(ctx, Quorum, xs)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, want, xs)
+	})
 }
 
 func TestRepairerCheckConsistencyAll(t *testing.T) {
