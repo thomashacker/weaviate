@@ -164,19 +164,12 @@ func (f *Finder) CheckConsistency(ctx context.Context,
 	}
 
 	for _, x := range cluster(createBatch(xs)) {
-		// make it concurrent
+		// TODO make it concurrent
 		if _, err := f.checkShardConsistency(ctx, l, x); err != nil {
 			f.log.WithField("op", "check_shard_consistency").
 				WithField("shard", x.Shard).Error(err)
 		}
 	}
-
-	// TODO:
-	// 1. Aggregate result set by shard
-	// 2. Aggregate the result set of a shard by node (owner of objects)
-	// 3. Set digest requests for non owning nodes
-	// 4. Check the consistency level for each shard
-	// 5. Repair for each shard
 	return nil
 }
 
@@ -223,6 +216,8 @@ func (f *Finder) NodeObject(ctx context.Context,
 	return r.Object, err
 }
 
+// checkShardConsistency checks consistency for a set of objects belonging to a shard
+// It returns the most recent objects or and erro
 func (f *Finder) checkShardConsistency(ctx context.Context,
 	l ConsistencyLevel,
 	batch shardPart,
@@ -230,10 +225,10 @@ func (f *Finder) checkShardConsistency(ctx context.Context,
 	var (
 		c         = newReadCoordinator[batchReply](f, batch.Shard)
 		shard     = batch.Shard
-		data, ids = batch.Extract()
+		data, ids = batch.Extract() // extract from current content
 	)
 	op := func(ctx context.Context, host string, fullRead bool) (batchReply, error) {
-		if fullRead {
+		if fullRead { // we already have the content
 			return batchReply{Sender: host, IsDigest: false, FullData: data}, nil
 		} else {
 			xs, err := f.client.DigestReads(ctx, host, f.class, shard, ids)

@@ -248,7 +248,7 @@ func (f *finderStream) readExistence(ctx context.Context,
 }
 
 // readBatchPart reads in replicated objects specified by their ids
-// readAll reads in replicated objects specified by their ids
+// It checks objects for consistency and sets
 func (f *finderStream) readBatchPart(ctx context.Context,
 	batch shardPart,
 	ids []strfmt.UUID,
@@ -296,7 +296,7 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 				}
 			}
 
-			if M == N {
+			if M == N { // all objects are consistent
 				for _, idx := range batch.Index {
 					batch.Data[idx].IsConsistent = true
 				}
@@ -311,23 +311,22 @@ func (f *finderStream) readBatchPart(ctx context.Context,
 				WithField("shard", batch.Shard).WithField("uuids", ids).Error(err)
 			return
 		}
-		// count votes
+		// count total number of votes
 		maxCount := len(votes) * len(votes)
 		sum := votes[0].Count
-		nc := 0
 		for _, vote := range votes[1:] {
 			for i, n := range vote.Count {
 				sum[i] += n
 			}
 		}
+		// set consistency flag
 		for i, n := range sum {
-			if n == maxCount {
+			if n == maxCount { // if consistent
 				prev := batch.Data[batch.Index[i]]
 				res[i].BelongsToShard = prev.BelongsToShard
 				res[i].BelongsToNode = prev.BelongsToNode
 				batch.Data[batch.Index[i]] = res[i]
 				res[i].IsConsistent = true
-				nc++
 			}
 		}
 
