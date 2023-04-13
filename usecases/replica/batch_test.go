@@ -222,7 +222,37 @@ func TestFinderCheckConsistencyQuorum(t *testing.T) {
 		ctx   = context.Background()
 	)
 
-	t.Run("ExceptOne", func(t *testing.T) {
+	t.Run("MalformedInputs", func(t *testing.T) {
+		var (
+			ids    = []strfmt.UUID{"10", "20", "30"}
+			shard  = "SH1"
+			nodes  = []string{"A", "B", "C"}
+			ctx    = context.Background()
+			f      = newFakeFactory("C1", shard, nodes)
+			finder = f.newFinder("A")
+			xs1    = []*storobj.Object{
+				objectEx(ids[0], 4, shard, "A"),
+				nil,
+				objectEx(ids[2], 6, shard, "A"),
+			}
+			// BelongToShard and BelongToNode are empty
+			xs2 = []*storobj.Object{
+				objectEx(ids[0], 4, shard, "A"),
+				{Object: models.Object{ID: ids[1]}},
+				objectEx(ids[2], 6, shard, "A"),
+			}
+		)
+
+		assert.Nil(t, finder.CheckConsistency(ctx, Quorum, nil))
+
+		err := finder.CheckConsistency(ctx, Quorum, xs1)
+		assert.NotNil(t, err)
+
+		err = finder.CheckConsistency(ctx, Quorum, xs2)
+		assert.NotNil(t, err)
+	})
+
+	t.Run("None", func(t *testing.T) {
 		var (
 			f      = newFakeFactory("C1", shard, nodes)
 			finder = f.newFinder("A")
@@ -280,7 +310,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		nodes = []string{"A", "B", "C"}
 		ctx   = context.Background()
 	)
-	t.Run("DirectRead3", func(t *testing.T) {
+	t.Run("GotMostRecentContent", func(t *testing.T) {
 		var (
 			f       = newFakeFactory("C1", shard, nodes)
 			finder  = f.newFinder("A")
@@ -292,10 +322,10 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 			digestR2 = []RepairResponse{
 				{ID: ids[0].String(), UpdateTime: 4},
 				{ID: ids[1].String(), UpdateTime: 2},
-				{ID: ids[2].String(), UpdateTime: 3},
+				{ID: ids[2].String(), UpdateTime: 0}, // doesn't exist
 			}
 			digestR3 = []RepairResponse{
-				{ID: ids[0].String(), UpdateTime: 1},
+				{ID: ids[0].String(), UpdateTime: 0}, // doesn't exist
 				{ID: ids[1].String(), UpdateTime: 5},
 				{ID: ids[2].String(), UpdateTime: 3},
 			}
@@ -317,7 +347,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 				},
 				{
 					LatestObject:    &directR[2].Object,
-					StaleUpdateTime: 3,
+					StaleUpdateTime: 0,
 				},
 			}
 
@@ -331,7 +361,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 			want := []*objects.VObject{
 				{
 					LatestObject:    &directR[0].Object,
-					StaleUpdateTime: 1,
+					StaleUpdateTime: 0,
 				},
 				{
 					LatestObject:    &directR[2].Object,
@@ -346,7 +376,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		assert.Equal(t, want, directR)
 	})
 
-	t.Run("DigestRead5", func(t *testing.T) {
+	t.Run("GetMostRecentContent", func(t *testing.T) {
 		var (
 			f      = newFakeFactory(cls, shard, nodes)
 			finder = f.newFinder("A")
@@ -501,7 +531,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		assert.Equal(t, want, xs)
 	})
 
-	t.Run("MostRecentChangedObject", func(t *testing.T) {
+	t.Run("OverwriteChangedObject", func(t *testing.T) {
 		var (
 			f      = newFakeFactory("C1", shard, nodes)
 			finder = f.newFinder("A")
@@ -520,7 +550,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 				{ID: ids[1].String(), UpdateTime: 5},
 				{ID: ids[2].String(), UpdateTime: 3},
 			}
-			digestR4 = []RepairResponse{
+			directR2 = []RepairResponse{
 				{ID: ids[0].String(), UpdateTime: 4},
 				{ID: ids[1].String(), UpdateTime: 2},
 				{ID: ids[2].String(), UpdateTime: 1, Err: "conflict"}, // this one
@@ -532,7 +562,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		f.RClient.On("DigestObjects", anyVal, nodes[2], cls, shard, ids).Return(digestR3, nil)
 
 		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, anyVal).
-			Return(digestR4, nil).
+			Return(directR2, nil).
 			Once().
 			RunFn = func(a mock.Arguments) {
 			got := a[4].([]*objects.VObject)
@@ -653,7 +683,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		assert.Equal(t, want, xs)
 	})
 
-	t.Run("FetchMostRecentObjectsEmptyResponse", func(t *testing.T) {
+	t.Run("DirectReadEmptyResponse", func(t *testing.T) {
 		var (
 			f      = newFakeFactory("C1", shard, nodes)
 			finder = f.newFinder("A")
@@ -720,7 +750,7 @@ func TestRepairerCheckConsistencyAll(t *testing.T) {
 		assert.Equal(t, want, xs)
 	})
 
-	t.Run("FetchMostRecentObjectsUnexpectedResponse", func(t *testing.T) {
+	t.Run("DirectReadEUnexpectedResponse", func(t *testing.T) {
 		var (
 			f      = newFakeFactory("C1", shard, nodes)
 			finder = f.newFinder("A")

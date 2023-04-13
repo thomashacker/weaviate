@@ -145,10 +145,7 @@ type ShardDesc struct {
 func (f *Finder) CheckConsistency(ctx context.Context,
 	l ConsistencyLevel, xs []*storobj.Object,
 ) (retErr error) {
-	if l == One || len(xs) == 0 {
-		for i := range xs {
-			xs[i].IsConsistent = true
-		}
+	if len(xs) == 0 {
 		return nil
 	}
 	for i, x := range xs {
@@ -158,6 +155,12 @@ func (f *Finder) CheckConsistency(ctx context.Context,
 		if x.BelongsToNode == "" || x.BelongsToShard == "" {
 			return fmt.Errorf("missing node or shard at index %d", i)
 		}
+	}
+	if l == One {
+		for i := range xs {
+			xs[i].IsConsistent = true
+		}
+		return nil
 	}
 
 	for _, x := range cluster(createBatch(xs)) {
