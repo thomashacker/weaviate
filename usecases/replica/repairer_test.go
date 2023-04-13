@@ -79,7 +79,7 @@ func TestRepairerOneWithALL(t *testing.T) {
 		updates := []*objects.VObject{{
 			LatestObject:    &item.Object.Object,
 			StaleUpdateTime: 2,
-			Version:         0, // todo set when implemented
+			Version:         0,
 		}}
 		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, updates).Return(digestR4, nil)
 
@@ -136,7 +136,7 @@ func TestRepairerOneWithALL(t *testing.T) {
 		updates := []*objects.VObject{{
 			LatestObject:    &item.Object.Object,
 			StaleUpdateTime: 2,
-			Version:         0, // todo set when implemented
+			Version:         0, 
 		}}
 		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, updates).Return(digestR2, errAny)
 
@@ -269,7 +269,7 @@ func TestRepairerExistsWithALL(t *testing.T) {
 		updates := []*objects.VObject{{
 			LatestObject:    &item.Object.Object,
 			StaleUpdateTime: 2,
-			Version:         0, // todo set when implemented
+			Version:         0, 
 		}}
 		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, updates).Return(digestR4, nil).RunFn = func(a mock.Arguments) {
 			updates := a[4].([]*objects.VObject)[0]
@@ -337,7 +337,7 @@ func TestRepairerExistsWithALL(t *testing.T) {
 		updates := []*objects.VObject{{
 			LatestObject:    &item.Object.Object,
 			StaleUpdateTime: 2,
-			Version:         0, // todo set when implemented
+			Version:         0,
 		}}
 		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, updates).Return(digestR2, errAny)
 
@@ -483,7 +483,7 @@ func TestRepairerExistsWithConsistencyLevelQuorum(t *testing.T) {
 		updates := []*objects.VObject{{
 			LatestObject:    &item.Object.Object,
 			StaleUpdateTime: 2,
-			Version:         0, // todo set when implemented
+			Version:         0, 
 		}}
 
 		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, updates).Return(digestR4, nil).RunFn = func(a mock.Arguments) {
@@ -548,7 +548,7 @@ func TestRepairerExistsWithConsistencyLevelQuorum(t *testing.T) {
 		updates := []*objects.VObject{{
 			LatestObject:    &item.Object.Object,
 			StaleUpdateTime: 2,
-			Version:         0, // todo set when implemented
+			Version:         0,
 		}}
 		f.RClient.On("OverwriteObjects", anyVal, nodes[1], cls, shard, updates).Return(digestR2, errAny)
 

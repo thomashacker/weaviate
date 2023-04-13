@@ -256,7 +256,6 @@ func (r *repairer) repairBatchPart(ctx context.Context,
 	}
 
 	// concurrent repairs
-	// TODO catch directCandidate.Addr == "" (see rState )
 	gr, ctx := errgroup.WithContext(ctx)
 	for rid, vote := range votes {
 		query := make([]*objects.VObject, 0, len(ids)/2)

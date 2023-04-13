@@ -22,6 +22,7 @@ import (
 	"github.com/weaviate/weaviate/entities/search"
 	"github.com/weaviate/weaviate/entities/storobj"
 	"github.com/weaviate/weaviate/usecases/objects"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -134,14 +135,19 @@ func (f *Finder) CheckConsistency(ctx context.Context,
 		return nil
 	}
 
+	gr, ctx := errgroup.WithContext(ctx)
 	for _, x := range cluster(createBatch(xs)) {
-		// TODO make it concurrent
-		if _, err := f.checkShardConsistency(ctx, l, x); err != nil {
-			f.log.WithField("op", "check_shard_consistency").
-				WithField("shard", x.Shard).Error(err)
-		}
+		x := x
+		gr.Go(func() error {
+			_, err := f.checkShardConsistency(ctx, l, x)
+			if err != nil {
+				f.log.WithField("op", "check_shard_consistency").
+					WithField("shard", x.Shard).Error(err)
+			}
+			return err
+		})
 	}
-	return nil
+	return gr.Wait()
 }
 
 // Exists checks if an object exists which satisfies the giving consistency

@@ -466,7 +466,7 @@ func TestFinderCheckConsistencyALL(t *testing.T) {
 
 		err := finder.CheckConsistency(ctx, All, xs)
 		want := setObjectsConsistency(xs, false)
-		assert.Nil(t, err)
+		assert.ErrorIs(t, err, errRead)
 		assert.ElementsMatch(t, want, xs)
 		f.assertLogErrorContains(t, errRead.Error())
 	})
@@ -650,7 +650,7 @@ func TestFinderCheckConsistencyQuorum(t *testing.T) {
 
 		err := finder.CheckConsistency(ctx, All, xs)
 		want := setObjectsConsistency(xs, false)
-		assert.Nil(t, err)
+		assert.ErrorIs(t, err, errRead)
 		assert.ElementsMatch(t, want, xs)
 		f.assertLogErrorContains(t, errRead.Error())
 	})
