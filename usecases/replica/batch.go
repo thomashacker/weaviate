@@ -19,13 +19,16 @@ import (
 	"github.com/weaviate/weaviate/usecases/objects"
 )
 
-type batchInput struct {
-	Data  []*storobj.Object
-	Index []int // z-index for data
+// indexedBatch holds an indexed list of objects
+type indexedBatch struct {
+	Data []*storobj.Object
+	// Index is z-index used to maintain object's order
+	Index []int
 }
 
-func createBatch(xs []*storobj.Object) batchInput {
-	var bi batchInput
+// createBatch creates indexedBatch from xs
+func createBatch(xs []*storobj.Object) indexedBatch {
+	var bi indexedBatch
 	bi.Data = xs
 	bi.Index = make([]int, len(xs))
 	for i := 0; i < len(xs); i++ {
@@ -35,13 +38,13 @@ func createBatch(xs []*storobj.Object) batchInput {
 }
 
 // cluster data object by shard
-func cluster(bi batchInput) []batchPart {
+func cluster(bi indexedBatch) []shardPart {
 	index := bi.Index
 	data := bi.Data
 	sort.Slice(index, func(i, j int) bool {
 		return data[index[i]].BelongsToShard < data[index[j]].BelongsToShard
 	})
-	clusters := make([]batchPart, 0, 16)
+	clusters := make([]shardPart, 0, 16)
 	// partition
 	cur := data[index[0]]
 	j := 0
@@ -49,7 +52,7 @@ func cluster(bi batchInput) []batchPart {
 		if data[index[i]].BelongsToShard == cur.BelongsToShard {
 			continue
 		}
-		clusters = append(clusters, batchPart{
+		clusters = append(clusters, shardPart{
 			Shard: cur.BelongsToShard,
 			Node:  cur.BelongsToNode, Data: data,
 			Index: index[j:i],
@@ -58,7 +61,7 @@ func cluster(bi batchInput) []batchPart {
 		cur = data[index[j]]
 
 	}
-	clusters = append(clusters, batchPart{
+	clusters = append(clusters, shardPart{
 		Shard: cur.BelongsToShard,
 		Node:  cur.BelongsToNode, Data: data,
 		Index: index[j:],
@@ -66,15 +69,16 @@ func cluster(bi batchInput) []batchPart {
 	return clusters
 }
 
-type batchPart struct {
-	Shard string
+// shardPart represents a data partition belonging to a physical shard
+type shardPart struct {
+	Shard string // one-to-one mapping between Shard and Node
 	Node  string
 
 	Data  []*storobj.Object
 	Index []int // index for data
 }
 
-func (b *batchPart) ObjectIDs() []strfmt.UUID {
+func (b *shardPart) ObjectIDs() []strfmt.UUID {
 	xs := make([]strfmt.UUID, len(b.Index))
 	for i, idx := range b.Index {
 		xs[i] = b.Data[idx].ID()
@@ -82,7 +86,7 @@ func (b *batchPart) ObjectIDs() []strfmt.UUID {
 	return xs
 }
 
-func (b *batchPart) Extract() ([]objects.Replica, []strfmt.UUID) {
+func (b *shardPart) Extract() ([]objects.Replica, []strfmt.UUID) {
 	xs := make([]objects.Replica, len(b.Index))
 	ys := make([]strfmt.UUID, len(b.Index))
 

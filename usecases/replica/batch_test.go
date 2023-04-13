@@ -35,7 +35,7 @@ func TestBatchInput(t *testing.T) {
 	}
 	parts := cluster(createBatch(data))
 	assert.Len(t, parts, 1)
-	assert.Equal(t, parts[0], batchPart{
+	assert.Equal(t, parts[0], shardPart{
 		Shard: "S1",
 		Node:  "N1",
 		Data:  data,

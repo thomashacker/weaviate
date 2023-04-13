@@ -225,7 +225,7 @@ func (f *Finder) NodeObject(ctx context.Context,
 
 func (f *Finder) checkShardConsistency(ctx context.Context,
 	l ConsistencyLevel,
-	batch batchPart,
+	batch shardPart,
 ) ([]*storobj.Object, error) {
 	var (
 		c         = newReadCoordinator[batchReply](f, batch.Shard)

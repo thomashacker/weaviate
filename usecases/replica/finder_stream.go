@@ -250,7 +250,7 @@ func (f *finderStream) readExistence(ctx context.Context,
 // readBatchPart reads in replicated objects specified by their ids
 // readAll reads in replicated objects specified by their ids
 func (f *finderStream) readBatchPart(ctx context.Context,
-	batch batchPart,
+	batch shardPart,
 	ids []strfmt.UUID,
 	ch <-chan _Result[batchReply], st rState,
 ) <-chan batchResult {
