@@ -108,35 +108,6 @@ func (f *Finder) GetOne(ctx context.Context,
 	return result.Value, err
 }
 
-// GetAll gets all objects which satisfy the giving consistency
-func (f *Finder) GetAll(ctx context.Context,
-	l ConsistencyLevel,
-	shard string,
-	ids []strfmt.UUID,
-) ([]*storobj.Object, error) {
-	c := newReadCoordinator[batchReply](f, shard)
-	op := func(ctx context.Context, host string, fullRead bool) (batchReply, error) {
-		if fullRead {
-			xs, err := f.client.FullReads(ctx, host, f.class, shard, ids)
-			return batchReply{Sender: host, IsDigest: false, FullData: xs}, err
-		} else {
-			xs, err := f.client.DigestReads(ctx, host, f.class, shard, ids)
-			return batchReply{Sender: host, IsDigest: true, DigestData: xs}, err
-		}
-	}
-	replyCh, state, err := c.Pull(ctx, l, op, "")
-	if err != nil {
-		f.log.WithField("op", "pull.all").Error(err)
-		return nil, fmt.Errorf("%s %q: %w", msgCLevel, l, errReplicas)
-	}
-	result := <-f.readAll(ctx, shard, ids, replyCh, state)
-	if err = result.Err; err != nil {
-		err = fmt.Errorf("%s %q: %w", msgCLevel, l, err)
-	}
-
-	return result.Value, err
-}
-
 type ShardDesc struct {
 	Name string
 	Node string
