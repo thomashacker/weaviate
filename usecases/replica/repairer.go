@@ -283,3 +283,133 @@ func (r *repairer) repairAll(ctx context.Context,
 
 	return result, err
 }
+
+// repairAll repairs objects when reading them ((use in combination with Finder::GetAll)
+func (r *repairer) repairBatchPart(ctx context.Context,
+	shard string,
+	ids []strfmt.UUID,
+	votes []vote,
+	st rState,
+	contentIdx int,
+) ([]*storobj.Object, error) {
+	var (
+		result     = make([]*storobj.Object, len(ids)) // final result
+		lastTimes  = make([]iTuple, len(ids))          // most recent times
+		ms         = make([]iTuple, 0, len(ids))       // mismatches
+		nDeletions = 0
+		cl         = r.client
+		nVotes     = len(votes)
+	)
+
+	// find most recent objects
+	for i, x := range votes[contentIdx].FullData {
+		lastTimes[i] = iTuple{S: contentIdx, O: i, T: x.UpdateTime(), Deleted: x.Deleted}
+		votes[contentIdx].Count[i] = nVotes // reuse Count[] to check consistency
+	}
+	for i, vote := range votes {
+		if i != contentIdx {
+			for j, x := range vote.DigestData {
+				deleted := lastTimes[j].Deleted || x.Deleted
+				if x.UpdateTime > lastTimes[j].T {
+					lastTimes[j] = iTuple{S: i, O: j, T: x.UpdateTime}
+				}
+				lastTimes[j].Deleted = deleted
+				votes[i].Count[j] = nVotes
+			}
+		}
+	}
+	// find missing content (diff)
+	for i, p := range votes[contentIdx].FullData {
+		if lastTimes[i].Deleted { // conflict
+			nDeletions++
+			result[i] = nil
+			votes[contentIdx].Count[i] = 0
+		} else if contentIdx != lastTimes[i].S {
+			ms = append(ms, lastTimes[i])
+		} else {
+			result[i] = p.Object
+		}
+	}
+	if len(ms) > 0 { // fetch most recent objects
+		// partition by hostname
+		sort.SliceStable(ms, func(i, j int) bool { return ms[i].S < ms[j].S })
+		partitions := make([]int, 0, len(votes))
+		pre := ms[0].S
+		for i, y := range ms {
+			if y.S != pre {
+				partitions = append(partitions, i)
+				pre = y.S
+			}
+		}
+		partitions = append(partitions, len(ms))
+
+		// concurrent fetches
+		gr, ctx := errgroup.WithContext(ctx)
+		start := 0
+		for _, end := range partitions { // fetch diffs
+			rid := ms[start].S
+			receiver := votes[rid].Sender
+			query := make([]strfmt.UUID, end-start)
+			for j := 0; start < end; start++ {
+				query[j] = ids[ms[start].O]
+				j++
+			}
+			start := start
+			gr.Go(func() error {
+				resp, err := cl.FullReads(ctx, receiver, r.class, shard, query)
+				for i, n := 0, len(query); i < n; i++ {
+					idx := ms[start-n+i].O
+					if err != nil || lastTimes[idx].T != resp[i].UpdateTime() {
+						votes[rid].Count[idx]--
+					} else {
+						result[idx] = resp[i].Object
+					}
+				}
+				return nil
+			})
+
+		}
+		if err := gr.Wait(); err != nil {
+			return nil, err
+		}
+	}
+
+	// concurrent repairs
+	// TODO catch directCandidate.Addr == "" (see rState )
+	gr, ctx := errgroup.WithContext(ctx)
+	for rid, vote := range votes {
+		query := make([]*objects.VObject, 0, len(ids)/2)
+		m := make(map[string]int, len(ids)/2) //
+		for j, x := range lastTimes {
+			cTime := vote.UpdateTimeAt(j)
+			if x.T != cTime && !x.Deleted && result[j] != nil && vote.Count[j] == nVotes {
+				query = append(query, &objects.VObject{LatestObject: &result[j].Object, StaleUpdateTime: cTime})
+				m[string(result[j].ID())] = j
+			}
+		}
+		if len(query) == 0 {
+			continue
+		}
+		receiver := vote.Sender
+		rid := rid
+		gr.Go(func() error {
+			rs, err := cl.Overwrite(ctx, receiver, r.class, shard, query)
+			if err != nil {
+				for _, idx := range m {
+					votes[rid].Count[idx]--
+				}
+				return nil
+			}
+			for _, r := range rs {
+				if r.Err != "" {
+					if idx, ok := m[r.ID]; ok {
+						votes[rid].Count[idx]--
+					}
+				}
+			}
+			return nil
+		})
+	}
+
+	return result, gr.Wait()
+}

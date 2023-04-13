@@ -222,3 +222,29 @@ func (f *Finder) NodeObject(ctx context.Context,
 	r, err := f.client.FullRead(ctx, host, f.class, shard, id, props, adds)
 	return r.Object, err
 }
+
+func (f *Finder) checkShardConsistency(ctx context.Context,
+	l ConsistencyLevel,
+	batch batchPart,
+) ([]*storobj.Object, error) {
+	var (
+		c         = newReadCoordinator[batchReply](f, batch.Shard)
+		shard     = batch.Shard
+		data, ids = batch.Extract()
+	)
+	op := func(ctx context.Context, host string, fullRead bool) (batchReply, error) {
+		if fullRead {
+			return batchReply{Sender: host, IsDigest: false, FullData: data}, nil
+		} else {
+			xs, err := f.client.DigestReads(ctx, host, f.class, shard, ids)
+			return batchReply{Sender: host, IsDigest: true, DigestData: xs}, err
+		}
+	}
+
+	replyCh, state, err := c.Pull(ctx, l, op, batch.Node)
+	if err != nil {
+		return nil, fmt.Errorf("pull shard: %w", errReplicas)
+	}
+	result := <-f.readBatchPart(ctx, batch, ids, replyCh, state)
+	return result.Value, result.Err
+}
